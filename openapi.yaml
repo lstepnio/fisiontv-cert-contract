@@ -1,0 +1,638 @@
+openapi: 3.1.0
+info:
+  title: FisionTV+ Network Certifier API
+  description: |
+    Contract between the Android TV certifier app and the HWC backend that
+    serves runtime config and ingests certification results. This file is
+    the **source of truth** for both ends; the human-readable narrative
+    in `BACKEND_API_SPEC.md` describes intent and rationale.
+
+    Both projects consume this repository as a git submodule pinned to a
+    semver tag. Bumping the major version is a breaking change requiring
+    coordinated client + server updates.
+  version: 1.0.0
+  license:
+    name: Proprietary — Hotwire Communications
+servers:
+  - url: https://certifier-api.gethotwired.com
+    description: Production
+  - url: https://certifier-api.staging.gethotwired.com
+    description: Staging
+
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/cert-config:
+    get:
+      operationId: getCertConfig
+      summary: Fetch runtime config
+      description: |
+        Called by the app on launch (and on each Run again). The app caches
+        the response with a 1-hour TTL and falls back to bundled defaults
+        on 5xx or if the returned schemaVersion exceeds what the app knows
+        how to consume.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/AppVersion'
+        - $ref: '#/components/parameters/SchemaVersion'
+        - in: header
+          name: If-None-Match
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Current active config
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CertConfig' }
+        '304':
+          description: ETag matched; client may use its cached copy
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '426':
+          description: |
+            Client `X-Schema-Version` is older than the minimum the server
+            still serves. Client must update.
+
+  /v1/certifications:
+    post:
+      operationId: postCertification
+      summary: Submit a certification result
+      description: |
+        Idempotent on `certificationId`. A duplicate POST with a matching
+        payload hash returns 200 with the stored record; a duplicate POST
+        with a different payload hash returns 409.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/AppVersion'
+        - $ref: '#/components/parameters/SchemaVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CertificationResult' }
+      responses:
+        '201':
+          description: First time this `certificationId` was seen; row inserted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CertificationResult' }
+        '200':
+          description: Duplicate POST with matching payload hash
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CertificationResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: |
+            Same `certificationId`, different payload hash. Almost always a
+            client bug; server logs loudly and rejects.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413':
+          description: Payload exceeds the 256 KB cap
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/certifications/{id}:
+    get:
+      operationId: getCertification
+      summary: Fetch a single certification result by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/AppVersion'
+        - $ref: '#/components/parameters/SchemaVersion'
+      responses:
+        '200':
+          description: The stored certification record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CertificationResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: No such certification
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    DeviceId:
+      in: header
+      name: X-Device-Id
+      required: true
+      schema: { type: string, format: uuid }
+      description: App-generated, persistent per install
+    AppVersion:
+      in: header
+      name: X-App-Version
+      required: true
+      schema: { type: string, example: "0.2.0" }
+    SchemaVersion:
+      in: header
+      name: X-Schema-Version
+      required: true
+      schema: { type: integer, minimum: 1 }
+      description: Highest schema version the client understands
+
+  responses:
+    BadRequest:
+      description: Validation failure
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              path: { type: string }
+              msg: { type: string }
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Cert config (GET /v1/cert-config)
+    # ──────────────────────────────────────────────────────────────────────
+
+    CertConfig:
+      type: object
+      required: [schemaVersion, configVersion, servers, tests, tiers, uploadResults]
+      properties:
+        schemaVersion: { type: integer, minimum: 1 }
+        configVersion:
+          type: string
+          description: Opaque; round-tripped in result POSTs for correlation
+        servers:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/OoklaServer' }
+        tests: { $ref: '#/components/schemas/TestsConfig' }
+        tiers:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/Tier' }
+        uploadResults:
+          type: object
+          required: [enabled]
+          properties:
+            enabled: { type: boolean }
+            endpoint: { type: string, nullable: true }
+
+    OoklaServer:
+      type: object
+      required: [id, name, host, port, secure]
+      properties:
+        id: { type: string, example: "mia" }
+        name: { type: string, example: "Miami" }
+        host: { type: string, example: "speedtestmia.gethotwired.com" }
+        port: { type: integer, minimum: 1, maximum: 65535, default: 8080 }
+        secure: { type: boolean, default: true }
+        weight:
+          type: number
+          default: 1.0
+          description: |
+            0.0 to drain the server out of selection without removing it.
+
+    TestsConfig:
+      type: object
+      required: [download, upload, latency, playback]
+      properties:
+        download: { $ref: '#/components/schemas/ThroughputPhaseConfig' }
+        upload: { $ref: '#/components/schemas/ThroughputPhaseConfig' }
+        latency: { $ref: '#/components/schemas/LatencyPhaseConfig' }
+        playback: { $ref: '#/components/schemas/PlaybackPhaseConfig' }
+
+    ThroughputPhaseConfig:
+      type: object
+      required: [durationSec, parallel, perRequestBytes, warmupFraction]
+      properties:
+        durationSec: { type: integer, minimum: 1, maximum: 120 }
+        parallel: { type: integer, minimum: 1, maximum: 16 }
+        perRequestBytes: { type: integer, format: int64, minimum: 1000000 }
+        warmupFraction: { type: number, minimum: 0.0, maximum: 0.9 }
+
+    LatencyPhaseConfig:
+      type: object
+      required: [samples, timeoutMs]
+      properties:
+        samples: { type: integer, minimum: 3, maximum: 100 }
+        timeoutMs: { type: integer, minimum: 100, maximum: 30000 }
+
+    PlaybackPhaseConfig:
+      type: object
+      required: [manifestUrl, durationSec]
+      properties:
+        manifestUrl: { type: string, format: uri }
+        durationSec: { type: integer, minimum: 5, maximum: 120 }
+
+    Tier:
+      type: object
+      required:
+        - id
+        - displayName
+        - minDownloadMbps
+        - maxLatencyMs
+        - maxJitterMs
+        - minPlaybackHeight
+      properties:
+        id:
+          type: string
+          enum: [sd, hd, uhd, uhd_hdr, none]
+        displayName: { type: string }
+        minDownloadMbps: { type: number, minimum: 0 }
+        minUploadMbps: { type: number, minimum: 0 }
+        maxLatencyMs: { type: integer, minimum: 1 }
+        maxJitterMs: { type: integer, minimum: 1 }
+        minPlaybackHeight: { type: integer, minimum: 1 }
+        minPlaybackBitrateKbps: { type: integer, minimum: 0 }
+        requiresHdr: { type: boolean, default: false }
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Certification result (POST /v1/certifications body)
+    # ──────────────────────────────────────────────────────────────────────
+
+    CertificationResult:
+      type: object
+      required:
+        - schemaVersion
+        - configVersion
+        - certificationId
+        - deviceId
+        - startedAt
+        - completedAt
+        - device
+        - identity
+        - capabilities
+        - network
+        - result
+        - metrics
+      properties:
+        schemaVersion: { type: integer, minimum: 1 }
+        configVersion: { type: string }
+        certificationId: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+        device: { $ref: '#/components/schemas/DeviceInfo' }
+        identity: { $ref: '#/components/schemas/DeviceIdentity' }
+        capabilities: { $ref: '#/components/schemas/Capabilities' }
+        network: { $ref: '#/components/schemas/NetworkInfo' }
+        wifi:
+          oneOf:
+            - $ref: '#/components/schemas/WifiInfo'
+            - type: 'null'
+        result: { $ref: '#/components/schemas/CertResult' }
+        metrics: { $ref: '#/components/schemas/Metrics' }
+
+    DeviceInfo:
+      type: object
+      required: [model, manufacturer, androidVersion, apiLevel, appVersion, appVersionCode]
+      properties:
+        model: { type: string }
+        manufacturer: { type: string }
+        androidVersion: { type: string }
+        apiLevel: { type: integer }
+        buildFingerprint: { type: string }
+        appVersion: { type: string }
+        appVersionCode: { type: integer, format: int64 }
+        uptimeMs: { type: integer, format: int64 }
+
+    DeviceIdentity:
+      type: object
+      required: [deviceId]
+      properties:
+        deviceId: { type: string, format: uuid }
+        hsn: { type: string, nullable: true }
+        hardwareSerial: { type: string, nullable: true }
+        ethernetMac: { type: string, nullable: true }
+        wifiMac: { type: string, nullable: true }
+
+    Capabilities:
+      type: object
+      required: [display, audio, thermal, memory, storage, locale, power, system, wifiSupport, bootTimeEpochMs]
+      properties:
+        drm:
+          oneOf:
+            - $ref: '#/components/schemas/DrmCapabilities'
+            - type: 'null'
+        display: { $ref: '#/components/schemas/DisplayCapabilities' }
+        videoCodecs:
+          type: array
+          items: { $ref: '#/components/schemas/CodecCapability' }
+        audio: { $ref: '#/components/schemas/AudioCapabilities' }
+        thermal:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [NONE, LIGHT, MODERATE, SEVERE, CRITICAL, EMERGENCY, SHUTDOWN, UNAVAILABLE, UNKNOWN]
+        memory:
+          type: object
+          properties:
+            totalMb: { type: integer, format: int64 }
+            availableMb: { type: integer, format: int64 }
+            thresholdMb: { type: integer, format: int64 }
+            lowMemory: { type: boolean }
+        storage:
+          type: object
+          properties:
+            dataPartitionFreeMb: { type: integer, format: int64 }
+            dataPartitionTotalMb: { type: integer, format: int64 }
+        locale:
+          type: object
+          properties:
+            locale: { type: string, example: "en-US" }
+            timezoneId: { type: string }
+            timezoneOffsetMin: { type: integer }
+        power:
+          type: object
+          properties:
+            acPlugged: { type: boolean }
+            batteryPresent: { type: boolean }
+            batteryLevelPct: { type: integer, nullable: true }
+        system:
+          type: object
+          properties:
+            developerOptionsEnabled: { type: boolean }
+            adbEnabled: { type: boolean }
+            isDebuggable: { type: boolean }
+        wifiSupport: { $ref: '#/components/schemas/WifiSupport' }
+        bootReason: { type: string, nullable: true }
+        bootTimeEpochMs: { type: integer, format: int64 }
+
+    DrmCapabilities:
+      type: object
+      properties:
+        widevineSecurityLevel:
+          type: string
+          enum: [L1, L2, L3]
+          nullable: true
+        widevineSystemId: { type: string, nullable: true }
+        widevineHdcpLevel: { type: string, nullable: true }
+        widevineMaxHdcpLevel: { type: string, nullable: true }
+        widevineVersion: { type: string, nullable: true }
+
+    DisplayCapabilities:
+      type: object
+      properties:
+        widthPx: { type: integer }
+        heightPx: { type: integer }
+        refreshRateHz: { type: number }
+        densityDpi: { type: integer }
+        supportedModes:
+          type: array
+          items:
+            type: object
+            properties:
+              widthPx: { type: integer }
+              heightPx: { type: integer }
+              refreshRateHz: { type: number }
+        hdrTypes:
+          type: array
+          items:
+            type: string
+            enum: [HDR10, HDR10_PLUS, DOLBY_VISION, HLG]
+
+    CodecCapability:
+      type: object
+      properties:
+        name: { type: string }
+        mimeType: { type: string }
+        isHardwareAccelerated: { type: boolean }
+        maxWidth: { type: integer, nullable: true }
+        maxHeight: { type: integer, nullable: true }
+        maxFrameRate: { type: integer, nullable: true }
+
+    AudioCapabilities:
+      type: object
+      properties:
+        supportedEncodings:
+          type: array
+          items: { type: string }
+        hdmiConnected: { type: boolean }
+
+    WifiSupport:
+      type: object
+      properties:
+        isWifiEnabled: { type: boolean }
+        fiveGhzSupported: { type: boolean }
+        sixGhzSupported: { type: boolean, nullable: true }
+        sixtyGhzSupported: { type: boolean, nullable: true }
+        wpa3SaeSupported: { type: boolean, nullable: true }
+        wpa3SuiteBSupported: { type: boolean, nullable: true }
+        easyConnectSupported: { type: boolean, nullable: true }
+        enhancedOpenSupported: { type: boolean, nullable: true }
+        staApConcurrencySupported: { type: boolean, nullable: true }
+        multiStaConcurrencySupported: { type: boolean, nullable: true }
+        tdlsSupported: { type: boolean, nullable: true }
+
+    NetworkInfo:
+      type: object
+      required: [transport, vpnActive, metered, validated, dnsServers]
+      properties:
+        transport:
+          type: string
+          enum: [WIFI, ETHERNET, CELLULAR, VPN, OTHER]
+        vpnActive: { type: boolean }
+        metered: { type: boolean }
+        validated: { type: boolean }
+        linkDownstreamKbps: { type: integer, nullable: true }
+        linkUpstreamKbps: { type: integer, nullable: true }
+        privateIp: { type: string, nullable: true }
+        gatewayIp: { type: string, nullable: true }
+        dnsServers:
+          type: array
+          items: { type: string }
+        publicIp: { type: string, nullable: true }
+        dhcp:
+          oneOf:
+            - $ref: '#/components/schemas/DhcpInfo'
+            - type: 'null'
+
+    DhcpInfo:
+      type: object
+      properties:
+        serverAddress: { type: string, nullable: true }
+        gateway: { type: string, nullable: true }
+        netmask: { type: string, nullable: true }
+        ipAddress: { type: string, nullable: true }
+        leaseSec: { type: integer, nullable: true }
+        dns1: { type: string, nullable: true }
+        dns2: { type: string, nullable: true }
+
+    WifiInfo:
+      type: object
+      required: [rssiDbm, signalLevel, linkSpeedMbps, frequencyMhz, band, standard, security]
+      properties:
+        rssiDbm: { type: integer }
+        signalLevel: { type: integer, minimum: 0, maximum: 4 }
+        linkSpeedMbps: { type: integer }
+        txLinkSpeedMbps: { type: integer, nullable: true }
+        rxLinkSpeedMbps: { type: integer, nullable: true }
+        maxSupportedTxLinkSpeedMbps: { type: integer, nullable: true }
+        maxSupportedRxLinkSpeedMbps: { type: integer, nullable: true }
+        frequencyMhz: { type: integer }
+        band:
+          type: string
+          enum: [BAND_2_4_GHZ, BAND_5_GHZ, BAND_6_GHZ, UNKNOWN]
+        channelWidthMhz: { type: integer, nullable: true }
+        standard:
+          type: string
+          enum: [LEGACY_11A, LEGACY_11B, LEGACY_11G, N_11N, AC_11AC, AX_11AX, BE_11BE, UNKNOWN]
+        security:
+          type: string
+          enum: [OPEN, WEP, WPA, WPA2_PSK, WPA2_EAP, WPA3, UNKNOWN]
+        ssid: { type: string, nullable: true }
+        bssid: { type: string, nullable: true }
+        supplicantState: { type: string, nullable: true }
+        hiddenSsid: { type: boolean, nullable: true }
+
+    CertResult:
+      type: object
+      required: [achievedTier, tierBreakdown, health]
+      properties:
+        achievedTier:
+          type: string
+          enum: [sd, hd, uhd, uhd_hdr, none]
+        marginalMetric: { type: string, nullable: true }
+        tierBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              tierId: { type: string }
+              passed: { type: boolean }
+              failedChecks:
+                type: array
+                items: { type: string }
+        health:
+          type: object
+          properties:
+            headroomPct: { type: integer, minimum: 0, maximum: 100 }
+            rating:
+              type: string
+              enum: [EXCELLENT, STRONG, GOOD, MARGINAL, FAILED]
+            limitingMetric: { type: string, nullable: true }
+            nextTier: { type: string, nullable: true }
+            perMetric:
+              type: object
+              additionalProperties: { type: integer }
+        wifiLink:
+          oneOf:
+            - $ref: '#/components/schemas/WifiLinkAdvisory'
+            - type: 'null'
+
+    WifiLinkAdvisory:
+      type: object
+      properties:
+        rating:
+          type: string
+          enum: [EXCELLENT, STRONG, GOOD, MARGINAL, FAILED]
+        rssiDbm: { type: integer }
+        band: { type: string }
+        linkSpeedMbps: { type: integer }
+        maxSupportedMbps: { type: integer, nullable: true }
+        rateAdaptationDegraded: { type: boolean }
+        advice: { type: string }
+
+    Metrics:
+      type: object
+      required: [selectedServer, download, upload, latency, dns, playback]
+      properties:
+        selectedServer:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            host: { type: string }
+            rttMs: { type: integer, format: int64 }
+        serverProbes:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              host: { type: string }
+              rttMs: { type: integer, format: int64 }
+              ok: { type: boolean }
+              selected: { type: boolean }
+        download: { $ref: '#/components/schemas/ThroughputMetric' }
+        upload: { $ref: '#/components/schemas/ThroughputMetric' }
+        latency:
+          type: object
+          properties:
+            medianMs: { type: integer }
+            jitterMs: { type: integer }
+            samples:
+              type: array
+              maxItems: 200
+              items: { type: integer }
+        dns:
+          type: object
+          properties:
+            medianMs: { type: integer }
+            maxMs: { type: integer }
+            failureCount: { type: integer }
+            samples:
+              type: array
+              maxItems: 200
+              items:
+                type: object
+                properties:
+                  host: { type: string }
+                  resolveMs: { type: integer }
+                  success: { type: boolean }
+                  resolvedIps:
+                    type: array
+                    items: { type: string }
+                  error: { type: string, nullable: true }
+        playback:
+          type: object
+          properties:
+            startupMs: { type: integer, format: int64 }
+            rebufferCount: { type: integer }
+            totalRebufferMs: { type: integer, format: int64 }
+            peakBitrateKbps: { type: integer }
+            peakHeight: { type: integer }
+            bitrateSwitchCount: { type: integer }
+            playedSec: { type: integer }
+
+    ThroughputMetric:
+      type: object
+      required: [steadyMbps, peakMbps, durationSec]
+      properties:
+        steadyMbps: { type: number }
+        peakMbps: { type: number }
+        durationSec: { type: integer }
+        samples:
+          type: array
+          maxItems: 200
+          items: { type: number }

@@ -1,0 +1,31 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  spec:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+
+      - name: Lint OpenAPI spec
+        run: npx --yes @redocly/cli@latest lint openapi.yaml
+
+      - name: Bundle (sanity-check refs resolve)
+        run: npx --yes @redocly/cli@latest bundle openapi.yaml -o /tmp/bundled.yaml
+
+      - name: Validate fixtures parse as JSON
+        run: |
+          for f in fixtures/*.json; do
+            jq empty "$f" && echo "OK: $f"
+          done

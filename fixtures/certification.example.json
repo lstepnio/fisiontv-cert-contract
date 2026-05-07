@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "configVersion": "2026-05-06.1",
+  "certificationId": "550e8400-e29b-41d4-a716-446655440000",
+  "deviceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "startedAt": "2026-05-06T18:36:48Z",
+  "completedAt": "2026-05-06T18:37:46Z",
+
+  "device": {
+    "model": "FRC1-Hotwire",
+    "manufacturer": "SEI Robotics",
+    "androidVersion": "12",
+    "apiLevel": 31,
+    "buildFingerprint": "EVOFORCE1/SEI800HW/SEI800HW:12/STTC.220803.001/1876:user/release-keys",
+    "appVersion": "0.2.0",
+    "appVersionCode": 2,
+    "uptimeMs": 65063862
+  },
+
+  "identity": {
+    "deviceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+    "hsn": "REDACT_BEFORE_PUBLISH",
+    "hardwareSerial": null,
+    "ethernetMac": null,
+    "wifiMac": null
+  },
+
+  "capabilities": {
+    "drm": {
+      "widevineSecurityLevel": "L1",
+      "widevineSystemId": "24048",
+      "widevineHdcpLevel": "HDCP-1.x",
+      "widevineMaxHdcpLevel": "HDCP-2.3",
+      "widevineVersion": "16.1.1@006"
+    },
+    "display": {
+      "widthPx": 1920,
+      "heightPx": 1080,
+      "refreshRateHz": 59.94,
+      "densityDpi": 320,
+      "supportedModes": [
+        { "widthPx": 1920, "heightPx": 1080, "refreshRateHz": 59.94 },
+        { "widthPx": 1280, "heightPx": 720,  "refreshRateHz": 60.00 },
+        { "widthPx": 720,  "heightPx": 480,  "refreshRateHz": 59.94 }
+      ],
+      "hdrTypes": []
+    },
+    "videoCodecs": [
+      { "name": "OMX.amlogic.hevc.decoder.awesome2",         "mimeType": "video/hevc",         "isHardwareAccelerated": true, "maxWidth": 4096, "maxHeight": 4096, "maxFrameRate": 960 },
+      { "name": "OMX.amlogic.av1.decoder.awesome2",          "mimeType": "video/av01",         "isHardwareAccelerated": true, "maxWidth": 3840, "maxHeight": 3840, "maxFrameRate": 960 },
+      { "name": "OMX.amlogic.dolby-vision.dvhe.decoder.awesome2", "mimeType": "video/dolby-vision", "isHardwareAccelerated": true, "maxWidth": 4096, "maxHeight": 4096, "maxFrameRate": 960 }
+    ],
+    "audio": {
+      "supportedEncodings": ["PCM_16BIT", "AC3", "EAC3"],
+      "hdmiConnected": true
+    },
+    "thermal": { "status": "NONE" },
+    "memory": { "totalMb": 3749, "availableMb": 1409, "thresholdMb": 144, "lowMemory": false },
+    "storage": { "dataPartitionFreeMb": 23244, "dataPartitionTotalMb": 25742 },
+    "locale": { "locale": "en-US", "timezoneId": "America/Denver", "timezoneOffsetMin": -360 },
+    "power": { "acPlugged": true, "batteryPresent": false, "batteryLevelPct": 50 },
+    "system": { "developerOptionsEnabled": true, "adbEnabled": true, "isDebuggable": false },
+    "wifiSupport": {
+      "isWifiEnabled": true,
+      "fiveGhzSupported": true,
+      "sixGhzSupported": false,
+      "sixtyGhzSupported": false,
+      "wpa3SaeSupported": true,
+      "wpa3SuiteBSupported": false,
+      "easyConnectSupported": true,
+      "enhancedOpenSupported": true,
+      "staApConcurrencySupported": false,
+      "multiStaConcurrencySupported": false,
+      "tdlsSupported": true
+    },
+    "bootReason": null,
+    "bootTimeEpochMs": 1778049168682
+  },
+
+  "network": {
+    "transport": "WIFI",
+    "vpnActive": false,
+    "metered": false,
+    "validated": true,
+    "linkDownstreamKbps": 60000,
+    "linkUpstreamKbps": 12000,
+    "privateIp": "192.168.10.189",
+    "gatewayIp": "192.168.10.1",
+    "dnsServers": ["1.1.1.1", "8.8.8.8"],
+    "publicIp": "203.0.113.5",
+    "dhcp": {
+      "serverAddress": "192.168.10.1",
+      "gateway": "192.168.10.1",
+      "netmask": null,
+      "ipAddress": "192.168.10.189",
+      "leaseSec": 86400,
+      "dns1": "1.1.1.1",
+      "dns2": "8.8.8.8"
+    }
+  },
+
+  "wifi": {
+    "rssiDbm": -60,
+    "signalLevel": 3,
+    "linkSpeedMbps": 680,
+    "txLinkSpeedMbps": 680,
+    "rxLinkSpeedMbps": null,
+    "maxSupportedTxLinkSpeedMbps": 1200,
+    "maxSupportedRxLinkSpeedMbps": 1200,
+    "frequencyMhz": 5240,
+    "band": "BAND_5_GHZ",
+    "channelWidthMhz": null,
+    "standard": "AX_11AX",
+    "security": "UNKNOWN",
+    "ssid": null,
+    "bssid": null,
+    "supplicantState": "COMPLETED",
+    "hiddenSsid": true
+  },
+
+  "result": {
+    "achievedTier": "hd",
+    "marginalMetric": "Download",
+    "tierBreakdown": [
+      { "tierId": "sd",      "passed": true,  "failedChecks": [] },
+      { "tierId": "hd",      "passed": true,  "failedChecks": [] },
+      { "tierId": "uhd",     "passed": false, "failedChecks": ["Download 205.1 Mbps is below the 40.0 Mbps minimum."] },
+      { "tierId": "uhd_hdr", "passed": false, "failedChecks": ["Playback peaked at 1080p; tier requires 2160p."] }
+    ],
+    "health": {
+      "headroomPct": 100,
+      "rating": "EXCELLENT",
+      "limitingMetric": "Download",
+      "nextTier": "uhd",
+      "perMetric": { "Download": 100, "Latency": 100, "Jitter": 100 }
+    },
+    "wifiLink": {
+      "rating": "STRONG",
+      "rssiDbm": -60,
+      "band": "BAND_5_GHZ",
+      "linkSpeedMbps": 680,
+      "maxSupportedMbps": 1200,
+      "rateAdaptationDegraded": false,
+      "advice": "-60 dBm on 5 GHz, 680/1200 Mbps. Healthy link with margin."
+    }
+  },
+
+  "metrics": {
+    "selectedServer": { "id": "apf", "name": "Apopka", "host": "speedtestapf.gethotwired.com", "rttMs": 111 },
+    "serverProbes": [
+      { "id": "mia",  "name": "Miami",             "host": "speedtestmia.gethotwired.com",  "rttMs": 143, "ok": true, "selected": false },
+      { "id": "apf",  "name": "Apopka",            "host": "speedtestapf.gethotwired.com",  "rttMs": 111, "ok": true, "selected": true  },
+      { "id": "atl",  "name": "Atlanta",           "host": "speedtestatl.gethotwired.com",  "rttMs": 123, "ok": true, "selected": false },
+      { "id": "boca", "name": "Boca Raton",        "host": "speedtestboca.gethotwired.com", "rttMs": 140, "ok": true, "selected": false },
+      { "id": "dfw",  "name": "Dallas/Fort Worth", "host": "speedtestdfw.gethotwired.com",  "rttMs": 116, "ok": true, "selected": false },
+      { "id": "la",   "name": "Los Angeles",       "host": "speedtestla.gethotwired.com",   "rttMs": 116, "ok": true, "selected": false },
+      { "id": "nc",   "name": "North Carolina",    "host": "speedtestnc.gethotwired.com",   "rttMs": 119, "ok": true, "selected": false }
+    ],
+    "download": { "steadyMbps": 205.1, "peakMbps": 237.3, "durationSec": 10 },
+    "upload":   { "steadyMbps": 127.6, "peakMbps": 152.8, "durationSec": 5  },
+    "latency":  { "medianMs": 51, "jitterMs": 3, "samples": [50, 49, 51, 52, 51, 50, 51, 52, 51, 50] },
+    "dns": {
+      "medianMs": 66, "maxMs": 131, "failureCount": 0,
+      "samples": [
+        { "host": "gethotwired.com",    "resolveMs": 131, "success": true, "resolvedIps": ["104.18.8.222"], "error": null },
+        { "host": "google.com",         "resolveMs": 66,  "success": true, "resolvedIps": ["142.250.125.139"], "error": null },
+        { "host": "netflix.com",        "resolveMs": 52,  "success": true, "resolvedIps": ["52.3.144.142"], "error": null },
+        { "host": "youtube.com",        "resolveMs": 64,  "success": true, "resolvedIps": ["172.217.214.136"], "error": null },
+        { "host": "dash.akamaized.net", "resolveMs": 78,  "success": true, "resolvedIps": ["23.47.72.208"], "error": null },
+        { "host": "cloudflare.com",     "resolveMs": 53,  "success": true, "resolvedIps": ["104.16.133.229"], "error": null }
+      ]
+    },
+    "playback": {
+      "startupMs": 1240,
+      "rebufferCount": 0,
+      "totalRebufferMs": 0,
+      "peakBitrateKbps": 9914,
+      "peakHeight": 1080,
+      "bitrateSwitchCount": 3,
+      "playedSec": 20
+    }
+  }
+}
