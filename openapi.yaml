@@ -124,6 +124,58 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /v1/app/version:
+    get:
+      operationId: getAppVersion
+      summary: Fetch the latest-app manifest
+      description: |
+        The client polls this on every launch. The response describes the
+        latest released APK plus the minimum versionCode the client is
+        allowed to run a certification at. The client gates its
+        "Run certification" button against `minRequiredVersionCode` — below
+        that floor the button is replaced by "Update & run" and the cert
+        is blocked until the update is downloaded, verified, installed,
+        and the app relaunches.
+
+        Why this exists: cert correctness (tier thresholds, server lists,
+        probe revisions) ships faster than firmware OTAs. Firmware
+        guarantees a baseline working app; this endpoint plus the APK
+        download is how that baseline is bumped between OTA cycles.
+
+        Integrity model:
+          - The client SHA-256 verifies the downloaded APK against `apkSha256`.
+          - The client verifies the APK's signing certificate SHA-256 matches
+            BOTH `signingCertSha256` AND the compile-time pin baked into
+            BuildConfig.APP_SIGNING_CERT_SHA256 (in firmware-shipped builds).
+          - The client refuses to install an APK whose `versionCode` is
+            less than or equal to the installed `versionCode`.
+        These together mean a compromised manifest endpoint cannot ship a
+        malicious APK without also possessing the production signing key.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/AppVersion'
+        - $ref: '#/components/parameters/AppVersionCode'
+        - in: header
+          name: If-None-Match
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Latest manifest
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppVersionManifest' }
+        '304':
+          description: ETag matched; client uses its cached manifest
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '426':
+          description: |
+            The client's `X-App-Version-Code` is below a hard floor the
+            server enforces (e.g., the app has known data-loss bugs and
+            must update before any further interaction).
+
 components:
   securitySchemes:
     bearerAuth:
@@ -143,6 +195,12 @@ components:
       name: X-App-Version
       required: true
       schema: { type: string, example: "0.2.0" }
+    AppVersionCode:
+      in: header
+      name: X-App-Version-Code
+      required: true
+      schema: { type: integer, minimum: 1, example: 50 }
+      description: Installed app's versionCode — the server uses it to decide if a manifest with a different minRequired needs to be returned.
     SchemaVersion:
       in: header
       name: X-Schema-Version
@@ -656,3 +714,77 @@ components:
           type: array
           maxItems: 200
           items: { type: number }
+
+    # ──────────────────────────────────────────────────────────────────────
+    # App self-update manifest (body of GET /v1/app/version)
+    # ──────────────────────────────────────────────────────────────────────
+
+    AppVersionManifest:
+      type: object
+      required:
+        - schemaVersion
+        - latestVersionName
+        - latestVersionCode
+        - minRequiredVersionCode
+        - apkUrl
+        - apkSizeBytes
+        - apkSha256
+        - signingCertSha256
+      properties:
+        schemaVersion: { type: integer, minimum: 1 }
+        latestVersionName:
+          type: string
+          example: "0.7.1"
+          description: Human-readable semver of the latest released APK.
+        latestVersionCode:
+          type: integer
+          minimum: 1
+          example: 71
+          description: Monotonic build counter of the latest released APK.
+        minRequiredVersionCode:
+          type: integer
+          minimum: 1
+          example: 68
+          description: |
+            Floor below which the app's "Run certification" button is
+            blocked. The client refuses to start a cert when the installed
+            versionCode is strictly less than this value. Use to enforce
+            measurement-integrity-critical updates (tier-threshold revisions,
+            server-list changes, probe bug fixes).
+            Must be <= latestVersionCode.
+        apkUrl:
+          type: string
+          format: uri
+          example: "https://certifier-api.gethotwired.com/v1/app/download/0.7.1.apk"
+          description: Absolute URL the client downloads the APK from. May be the API host or a CDN. Must be HTTPS in production.
+        apkSizeBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 12345678
+          description: Exact size of the APK. The client refuses to install if downloaded bytes don't match.
+        apkSha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          example: "ab12cd34ef560000000000000000000000000000000000000000000000000000"
+          description: Lowercase hex SHA-256 of the APK bytes. The client refuses to install on mismatch.
+        signingCertSha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          example: "ff009911000000000000000000000000000000000000000000000000000000ff"
+          description: |
+            Lowercase hex SHA-256 of the APK's signing certificate. The
+            client checks this against the actual cert of the downloaded
+            APK AND against `BuildConfig.APP_SIGNING_CERT_SHA256` (the
+            compile-time pin baked into firmware-shipped builds). Both
+            must match before install.
+        releaseNotes:
+          type: string
+          nullable: true
+          example: "Adjusted 4K-HDR tier thresholds; added ATL-3 server."
+          description: Optional human-readable note shown to the field tech in the "Update available" banner.
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When this release was published. Informational only — not used in any gating logic.
