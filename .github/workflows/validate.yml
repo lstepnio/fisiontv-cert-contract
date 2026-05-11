@@ -18,11 +18,16 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
 
+      # Pin redocly so CI stays deterministic. @latest started flagging
+      # the spec's OpenAPI 3.0-style `nullable: true` as a `struct` error
+      # after an unrelated bump; the schemas are correct for the 3.0
+      # features they actually use, so pinning is simpler than rewriting
+      # every nullable field to 3.1 union-type syntax right now.
       - name: Lint OpenAPI spec
-        run: npx --yes @redocly/cli@latest lint openapi.yaml
+        run: npx --yes @redocly/cli@1.25.15 lint openapi.yaml
 
       - name: Bundle (sanity-check refs resolve)
-        run: npx --yes @redocly/cli@latest bundle openapi.yaml -o /tmp/bundled.yaml
+        run: npx --yes @redocly/cli@1.25.15 bundle openapi.yaml -o /tmp/bundled.yaml
 
       - name: Validate fixtures parse as JSON
         run: |
