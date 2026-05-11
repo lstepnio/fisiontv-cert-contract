@@ -12,6 +12,22 @@ fields). **Patch** bumps clarify the spec without changing payload shape.
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-05-11
+
+### Added
+
+- Two optional POST-time timestamps on `CertificationResult`:
+  - `enqueuedAt` — when the row first entered the client publish queue
+  - `submittedAt` — when this specific POST attempt left the device
+- "Timestamp semantics" guidance in `SPEC.md` clarifying that backends
+  should key storage off `completedAt` (cert run time) rather than
+  `received_at` (request arrival), so reports remain accurate when a
+  payload sat queued for hours or days before draining.
+
+Both fields are optional; clients pinned to 1.0.x continue to produce
+valid payloads without them. Servers must accept payloads with or
+without the new fields.
+
 ## [1.0.0] — 2026-05-06
 
 ### Added
