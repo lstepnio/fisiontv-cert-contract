@@ -300,6 +300,26 @@ components:
         deviceId: { type: string, format: uuid }
         startedAt: { type: string, format: date-time }
         completedAt: { type: string, format: date-time }
+        # ─── Submission timestamps (added by the app at POST time) ───
+        # startedAt/completedAt describe when the certification ran on the
+        # STB. When the publish API is unavailable, results queue locally
+        # and may not be POSTed for hours or days. The two fields below
+        # tell the backend when the row entered the queue and when this
+        # specific POST attempt was made — so the API can key its storage
+        # off completedAt (the cert time) instead of request-received time
+        # and still report queue/transmission delay.
+        #
+        # Both are absent on payloads queued by app versions earlier than
+        # the one that introduced them, so consumers should treat them
+        # as optional.
+        enqueuedAt:
+          type: string
+          format: date-time
+          description: When the result was first enqueued on the device. Present on payloads stamped by PublishQueue.
+        submittedAt:
+          type: string
+          format: date-time
+          description: When this POST attempt left the device. Refreshed per attempt; on a successful first try it is close to enqueuedAt, on a queued-then-drained row it can be hours or days later.
         device: { $ref: '#/components/schemas/DeviceInfo' }
         identity: { $ref: '#/components/schemas/DeviceIdentity' }
         capabilities: { $ref: '#/components/schemas/Capabilities' }

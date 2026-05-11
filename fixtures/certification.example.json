@@ -5,6 +5,8 @@
   "deviceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "startedAt": "2026-05-06T18:36:48Z",
   "completedAt": "2026-05-06T18:37:46Z",
+  "enqueuedAt": "2026-05-06T18:37:47Z",
+  "submittedAt": "2026-05-06T18:37:48Z",
 
   "device": {
     "model": "FRC1-Hotwire",

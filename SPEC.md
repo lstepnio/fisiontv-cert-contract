@@ -215,6 +215,8 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
   "deviceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "startedAt": "2026-05-06T14:32:11Z",
   "completedAt": "2026-05-06T14:33:08Z",
+  "enqueuedAt": "2026-05-06T14:33:09Z",
+  "submittedAt": "2026-05-06T14:33:09Z",
 
   "device": {
     "model": "FRC1-Hotwire",
@@ -487,6 +489,26 @@ create index on certifications (device_id, completed_at desc);
 create index on certifications (hsn, completed_at desc);
 create index on certifications (achieved_tier, completed_at desc);
 ```
+
+**Timestamp semantics.** Four payload timestamps describe a single run:
+
+| Field | Set by | Meaning |
+|---|---|---|
+| `startedAt` | client (cert engine) | When the certification began on the STB. |
+| `completedAt` | client (cert engine) | When the certification finished on the STB. **This is the moment the cert measured the network — store cert records keyed off this, not `received_at`.** |
+| `enqueuedAt` | client (publish queue) | When the result first entered the local publish queue. Usually within 1 s of `completedAt`. |
+| `submittedAt` | client (publish queue) | When *this* POST attempt was made. Refreshed on every retry. |
+
+`received_at` (server-only) is the wall-clock moment the row arrived at
+the API. For runs that POSTed on the first try, all four client-side
+timestamps land within a couple of seconds of each other. For runs that
+queued because the API was unavailable, the gap between `completedAt`
+and `submittedAt` can be hours or days — that gap is the queue-delay
+metric.
+
+**Do not** use `received_at` as the certification time. A run from
+yesterday that finally drained today would otherwise be indistinguishable
+from a fresh run, breaking trend queries.
 
 `GET /v1/cert-config` reads the active row. To roll out a new config: insert
 a new row, then in a transaction flip `is_active`. Old configs stay in the
