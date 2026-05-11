@@ -383,9 +383,8 @@ components:
         capabilities: { $ref: '#/components/schemas/Capabilities' }
         network: { $ref: '#/components/schemas/NetworkInfo' }
         wifi:
-          oneOf:
-            - $ref: '#/components/schemas/WifiInfo'
-            - type: 'null'
+          allOf: [{ $ref: '#/components/schemas/WifiInfo' }]
+          nullable: true
         result: { $ref: '#/components/schemas/CertResult' }
         metrics: { $ref: '#/components/schemas/Metrics' }
 
@@ -417,9 +416,8 @@ components:
       required: [display, audio, thermal, memory, storage, locale, power, system, wifiSupport, bootTimeEpochMs]
       properties:
         drm:
-          oneOf:
-            - $ref: '#/components/schemas/DrmCapabilities'
-            - type: 'null'
+          allOf: [{ $ref: '#/components/schemas/DrmCapabilities' }]
+          nullable: true
         display: { $ref: '#/components/schemas/DisplayCapabilities' }
         videoCodecs:
           type: array
@@ -550,9 +548,8 @@ components:
           items: { type: string }
         publicIp: { type: string, nullable: true }
         dhcp:
-          oneOf:
-            - $ref: '#/components/schemas/DhcpInfo'
-            - type: 'null'
+          allOf: [{ $ref: '#/components/schemas/DhcpInfo' }]
+          nullable: true
 
     DhcpInfo:
       type: object
@@ -623,9 +620,8 @@ components:
               type: object
               additionalProperties: { type: integer }
         wifiLink:
-          oneOf:
-            - $ref: '#/components/schemas/WifiLinkAdvisory'
-            - type: 'null'
+          allOf: [{ $ref: '#/components/schemas/WifiLinkAdvisory' }]
+          nullable: true
 
     WifiLinkAdvisory:
       type: object
