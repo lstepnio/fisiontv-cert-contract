@@ -129,18 +129,35 @@ paths:
       operationId: getAppVersion
       summary: Fetch the latest-app manifest
       description: |
-        The client polls this on every launch. The response describes the
-        latest released APK plus the minimum versionCode the client is
-        allowed to run a certification at. The client gates its
-        "Run certification" button against `minRequiredVersionCode` — below
-        that floor the button is replaced by "Update & run" and the cert
-        is blocked until the update is downloaded, verified, installed,
-        and the app relaunches.
+        The client polls this on every launch. The response describes
+        the latest released APK; the client uses it to drive a
+        background auto-update pipeline. The certification is never
+        blocked on update state — if the update fails (network blip,
+        integrity mismatch, install refused) the client logs and
+        proceeds on the installed version.
 
-        Why this exists: cert correctness (tier thresholds, server lists,
-        probe revisions) ships faster than firmware OTAs. Firmware
-        guarantees a baseline working app; this endpoint plus the APK
-        download is how that baseline is bumped between OTA cycles.
+        Per-attempt pipeline: download → SHA verify → signing-cert
+        verify → versionCode monotonicity check → install. The install
+        commit is deferred while a cert is in flight (the OS would
+        otherwise kill the cert process when replacing the app).
+
+        Retry policy: transient failures (network, install session
+        errors) retry 4 times total at 5s / 30s / 2min backoffs.
+        Integrity failures (SHA / signing-cert / downgrade) abort
+        permanently — retrying with the same bytes won't change the
+        result. Exhausted retries are logged and the cert runs on the
+        installed version.
+
+        `minRequiredVersionCode` is **advisory** to the client: it does
+        not gate the cert. The server is free to flag/dim/discard
+        stored results whose originating `versionCode` is below the
+        floor — the client's job is to produce a result the server can
+        evaluate.
+
+        Why this endpoint exists: cert correctness (tier thresholds,
+        server lists, probe revisions) ships faster than firmware OTAs.
+        Firmware guarantees a baseline working app; this endpoint plus
+        the APK download bumps that baseline between OTA cycles.
 
         Integrity model:
           - The client SHA-256 verifies the downloaded APK against `apkSha256`.
@@ -746,12 +763,12 @@ components:
           minimum: 1
           example: 68
           description: |
-            Floor below which the app's "Run certification" button is
-            blocked. The client refuses to start a cert when the installed
-            versionCode is strictly less than this value. Use to enforce
-            measurement-integrity-critical updates (tier-threshold revisions,
-            server-list changes, probe bug fixes).
-            Must be <= latestVersionCode.
+            Advisory floor — the version the server would prefer
+            results came from. The client does NOT gate the cert on
+            this; it auto-updates in the background but always lets
+            the cert run, even on outdated installs. The server-side
+            decides what to do with results from clients below the
+            floor (flag, dim, discard, etc.). Must be <= latestVersionCode.
         apkUrl:
           type: string
           format: uri
@@ -782,7 +799,10 @@ components:
           type: string
           nullable: true
           example: "Adjusted 4K-HDR tier thresholds; added ATL-3 server."
-          description: Optional human-readable note shown to the field tech in the "Update available" banner.
+          description: |
+            Optional human-readable note. Reserved for future client
+            surface; the current client auto-updates silently and does
+            not display this anywhere.
         publishedAt:
           type: string
           format: date-time

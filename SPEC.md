@@ -122,23 +122,39 @@ For HWC support to pull a single result by UUID. Returns the stored record or
 
 ### 4.4 `GET /v1/app/version`
 
-Called by the app on launch in parallel with the cert-config fetch. The
-response describes the latest released APK plus the minimum versionCode
-the client is allowed to run a certification at. The client uses the
-manifest to gate its "Run certification" button:
+Called by the app on launch in parallel with the cert-config fetch.
+The response describes the latest released APK plus the minimum
+versionCode the server would prefer the client at. The client treats
+this as **advisory** — it auto-updates in the background and never
+blocks the certification on update state:
 
-- `installed >= latestVersionCode` → button reads "Run certification"
-- `minRequiredVersionCode <= installed < latestVersionCode` → button still
-  works, but a banner above offers an update
-- `installed < minRequiredVersionCode` → button flips to "Update & run";
-  the cert is **blocked** until the update is downloaded, verified,
-  installed, and the app relaunches
+- `installed >= latestVersionCode` → no-op.
+- `installed < latestVersionCode` → the client downloads the APK,
+  verifies it, and installs it. The pipeline retries transient
+  failures with backoff (5s / 30s / 2min); integrity failures
+  (SHA / signing-cert / downgrade) abort permanently. If all
+  retries are exhausted, the client logs the failure and proceeds
+  on the installed version.
+- The install commit is **deferred** while a cert is in flight —
+  the OS would otherwise kill the cert mid-run when replacing the
+  app process. As soon as the cert completes, the queued install
+  commits.
+- `minRequiredVersionCode` is **informational** to the client. The
+  server may use it to flag stored results from outdated clients
+  ("don't trust the tier evaluation from versionCode < X"), but the
+  client itself does not gate the cert on it.
 
-**Why this exists.** Cert correctness changes (tier thresholds, server
-lists, probe revisions) need to ship in hours. Firmware OTAs ship in
-weeks. This endpoint plus the APK download is how the app bumps itself
-between OTA cycles. Firmware OTA remains the floor — every STB ships
-with a baseline working app.
+**Why "cert always wins".** A field tech at a customer install can't be
+blocked by a network blip preventing an update. Producing a cert result
+— even from a slightly old client — is more valuable than producing
+nothing. The server is in a better position than the client to decide
+how to weight a result tagged with the originating versionCode.
+
+**Why this endpoint exists at all.** Cert correctness changes (tier
+thresholds, server lists, probe revisions) need to ship in hours.
+Firmware OTAs ship in weeks. This endpoint plus the APK download is
+how the app bumps itself between OTA cycles. Firmware OTA remains the
+floor — every STB ships with a baseline working app.
 
 **Request headers:**
 
@@ -155,9 +171,9 @@ with a baseline working app.
 **Response 304:** if `If-None-Match` matches the current manifest's ETag.
 
 **Response 426:** if `X-App-Version-Code` is below a hard server-enforced
-floor (e.g., a known-broken release has been pulled). Client treats this
-the same as `installed < minRequiredVersionCode` — block, surface, force
-update.
+floor (e.g., a known-broken release has been pulled). Today the client
+treats this the same as a stale manifest — logs and falls back to the
+installed version. The cert still runs.
 
 **Integrity model (client-side).** The server's job is to return an
 accurate manifest. The client enforces three invariants before installing
@@ -173,8 +189,18 @@ any APK it has downloaded:
 3. The APK's `versionCode` is strictly greater than the installed
    `versionCode`. (Catches downgrade attacks and stale manifests.)
 
-A failure of any check refuses the install and surfaces the reason to the
-field tech. The downloaded APK is deleted from disk.
+A failure of any check is logged as a permanent failure — the auto-update
+pipeline aborts immediately (no retry) and the downloaded APK is deleted.
+
+**Sideloaded vs. system-signed builds.** Install path is decided at
+runtime: a build that holds `INSTALL_PACKAGES` (granted only to apps
+signed with the platform key, i.e. firmware-baked) installs silently;
+a sideloaded build falls back to a system "Install update?" dialog. In
+the sideloaded path the auto-update commits in the background, surfacing
+the system dialog without warning — acceptable for dev iteration, not
+intended for the deployed-firmware case. The same APK works in both
+modes; the decision is `canInstallSilently()` at install time, not a
+build flag.
 
 **APK hosting.** The `apkUrl` in the manifest is absolute. It may be the
 API host itself or a CDN. The client treats it as opaque — no auth is
@@ -522,12 +548,16 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
 
 **Field notes:**
 
-- `latestVersionCode` — monotonic. Each release bumps it by ≥1. The client
-  treats `installed >= latestVersionCode` as "no update available".
-- `minRequiredVersionCode` — the floor. Must satisfy
-  `1 <= minRequiredVersionCode <= latestVersionCode`. Use this to enforce
-  a cert-blocking update when the installed app has bugs that produce
-  incorrect measurements.
+- `latestVersionCode` — monotonic. Each release bumps it by ≥1. The
+  client triggers its background auto-update pipeline when
+  `installed < latestVersionCode`; otherwise no-op.
+- `minRequiredVersionCode` — informational floor. Must satisfy
+  `1 <= minRequiredVersionCode <= latestVersionCode`. The current
+  client does not gate the cert on this — it always lets the cert run
+  even on outdated installs, because "blocked in the field with no
+  result" is worse than "result from a slightly-old client". The
+  server is the right place to tag/dim/discard results that arrive
+  from clients below this floor.
 - `apkUrl` — absolute. HTTPS in production. The client downloads with no
   auth header — integrity is enforced via the SHA-256 + signing-cert
   pinning, not via transport auth.
@@ -538,8 +568,9 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
   signing certificate. Must equal the actual certificate of the
   downloaded APK AND match `BuildConfig.APP_SIGNING_CERT_SHA256` in
   the client build.
-- `releaseNotes` — optional, shown verbatim in the "Update available"
-  banner. Keep short (≤120 chars renders cleanly on a TV).
+- `releaseNotes` — optional. Reserved for future surface; the current
+  client does not display it (auto-update is silent). Keep short
+  (≤120 chars).
 - `publishedAt` — informational only.
 
 ---
