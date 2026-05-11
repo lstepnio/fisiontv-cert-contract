@@ -10,7 +10,7 @@ info:
     Both projects consume this repository as a git submodule pinned to a
     semver tag. Bumping the major version is a breaking change requiring
     coordinated client + server updates.
-  version: 1.1.0
+  version: 1.2.0
   license:
     name: Proprietary — Hotwire Communications
 servers:

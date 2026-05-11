@@ -12,6 +12,21 @@ fields). **Patch** bumps clarify the spec without changing payload shape.
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-05-11
+
+### Added
+
+- `GET /v1/app/version` — the latest-app manifest the client polls on
+  every launch. Carries the latest `versionCode` + `versionName`, the
+  `minRequiredVersionCode` floor below which cert runs are blocked,
+  the absolute `apkUrl`, and integrity pins (`apkSha256` and
+  `signingCertSha256`). Supports 304 via ETag and a 426 hard-floor
+  response. SPEC.md grows a corresponding "Self-update flow" section.
+- `AppVersionManifest` schema + `X-App-Version-Code` header parameter.
+
+Clients that don't call the new endpoint continue to work unchanged
+(it's an addition, not a behavior change to any existing path).
+
 ## [1.1.0] — 2026-05-11
 
 ### Added
