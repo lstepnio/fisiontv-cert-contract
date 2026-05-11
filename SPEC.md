@@ -120,6 +120,68 @@ Called by the app at the end of each successful run. Idempotent on
 For HWC support to pull a single result by UUID. Returns the stored record or
 404. Same auth as above. Not called by the app.
 
+### 4.4 `GET /v1/app/version`
+
+Called by the app on launch in parallel with the cert-config fetch. The
+response describes the latest released APK plus the minimum versionCode
+the client is allowed to run a certification at. The client uses the
+manifest to gate its "Run certification" button:
+
+- `installed >= latestVersionCode` → button reads "Run certification"
+- `minRequiredVersionCode <= installed < latestVersionCode` → button still
+  works, but a banner above offers an update
+- `installed < minRequiredVersionCode` → button flips to "Update & run";
+  the cert is **blocked** until the update is downloaded, verified,
+  installed, and the app relaunches
+
+**Why this exists.** Cert correctness changes (tier thresholds, server
+lists, probe revisions) need to ship in hours. Firmware OTAs ship in
+weeks. This endpoint plus the APK download is how the app bumps itself
+between OTA cycles. Firmware OTA remains the floor — every STB ships
+with a baseline working app.
+
+**Request headers:**
+
+| Header                       | Required | Notes                                        |
+|------------------------------|----------|----------------------------------------------|
+| `Authorization: Bearer …`    | yes      | See § 5                                      |
+| `X-Device-Id: <uuid>`        | yes      | App-generated, persistent per install        |
+| `X-App-Version: 0.5.0`       | yes      | Installed app's `versionName`                |
+| `X-App-Version-Code: 50`     | yes      | Installed app's `versionCode`                |
+| `If-None-Match: <etag>`      | no       | ETag from a prior 200; server returns 304 if unchanged |
+
+**Response 200:** body = `AppVersionManifest` (§ 6.4).
+
+**Response 304:** if `If-None-Match` matches the current manifest's ETag.
+
+**Response 426:** if `X-App-Version-Code` is below a hard server-enforced
+floor (e.g., a known-broken release has been pulled). Client treats this
+the same as `installed < minRequiredVersionCode` — block, surface, force
+update.
+
+**Integrity model (client-side).** The server's job is to return an
+accurate manifest. The client enforces three invariants before installing
+any APK it has downloaded:
+
+1. The downloaded bytes hash to `apkSha256`. (Catches MITM and corrupted
+   downloads.)
+2. The APK's signing certificate SHA-256 matches the manifest's
+   `signingCertSha256` AND the compile-time pin in
+   `BuildConfig.APP_SIGNING_CERT_SHA256` (set from the keystore at
+   firmware-build time). (Catches a compromised manifest endpoint — the
+   attacker would also need the production signing key.)
+3. The APK's `versionCode` is strictly greater than the installed
+   `versionCode`. (Catches downgrade attacks and stale manifests.)
+
+A failure of any check refuses the install and surfaces the reason to the
+field tech. The downloaded APK is deleted from disk.
+
+**APK hosting.** The `apkUrl` in the manifest is absolute. It may be the
+API host itself or a CDN. The client treats it as opaque — no auth is
+required to download (the integrity model above is what protects the
+client). Recommendation: serve from a CDN behind a long cache lifetime
+keyed on the APK content hash.
+
 ---
 
 ## 5. Auth — pick one of these and write it down
@@ -440,6 +502,45 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
   unstable hardware/firmware.
 - `bootTimeEpochMs` — absolute wall-clock timestamp of the last boot.
   Useful in support tickets ("this STB has been up since X").
+
+### 6.4 `AppVersionManifest` (response of `GET /v1/app/version`)
+
+```json
+{
+  "schemaVersion": 1,
+  "latestVersionName": "0.7.1",
+  "latestVersionCode": 71,
+  "minRequiredVersionCode": 68,
+  "apkUrl": "https://certifier-api.gethotwired.com/v1/app/download/0.7.1.apk",
+  "apkSizeBytes": 12345678,
+  "apkSha256": "ab12cd34ef560000000000000000000000000000000000000000000000000000",
+  "signingCertSha256": "ff009911000000000000000000000000000000000000000000000000000000ff",
+  "releaseNotes": "Adjusted 4K-HDR tier thresholds; added ATL-3 server.",
+  "publishedAt": "2026-05-09T18:00:00Z"
+}
+```
+
+**Field notes:**
+
+- `latestVersionCode` — monotonic. Each release bumps it by ≥1. The client
+  treats `installed >= latestVersionCode` as "no update available".
+- `minRequiredVersionCode` — the floor. Must satisfy
+  `1 <= minRequiredVersionCode <= latestVersionCode`. Use this to enforce
+  a cert-blocking update when the installed app has bugs that produce
+  incorrect measurements.
+- `apkUrl` — absolute. HTTPS in production. The client downloads with no
+  auth header — integrity is enforced via the SHA-256 + signing-cert
+  pinning, not via transport auth.
+- `apkSizeBytes` — exact size. The client refuses to install if the
+  downloaded length differs.
+- `apkSha256` — 64-char lowercase hex SHA-256 of the APK contents.
+- `signingCertSha256` — 64-char lowercase hex SHA-256 of the APK's
+  signing certificate. Must equal the actual certificate of the
+  downloaded APK AND match `BuildConfig.APP_SIGNING_CERT_SHA256` in
+  the client build.
+- `releaseNotes` — optional, shown verbatim in the "Update available"
+  banner. Keep short (≤120 chars renders cleanly on a TV).
+- `publishedAt` — informational only.
 
 ---
 
