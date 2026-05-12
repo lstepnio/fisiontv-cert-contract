@@ -82,18 +82,58 @@ returned `schemaVersion` is higher than the app understands.
 
 **Request headers:**
 
-| Header                    | Required | Notes                                  |
-|---------------------------|----------|----------------------------------------|
-| `Authorization: Bearer …` | yes      | See § 5                                |
-| `X-Device-Id: <uuid>`     | yes      | App-generated, persistent per install  |
-| `X-App-Version: 0.1.0`    | yes      | App build version                      |
-| `X-Schema-Version: 1`     | yes      | Highest schema the client understands  |
+| Header                              | Required | Notes                                                   |
+|-------------------------------------|----------|---------------------------------------------------------|
+| `Authorization: Bearer …`           | yes      | See § 5                                                 |
+| `X-Device-Id: <uuid>`               | yes      | App-generated, persistent per install                   |
+| `X-App-Version: 0.1.0`              | yes      | App build version                                       |
+| `X-Schema-Version: 1`               | yes      | Highest schema the client understands                   |
+| `X-Device-Manufacturer: <str>`      | no       | Android `Build.MANUFACTURER`. Used for targeting (§ 4.1.1, added in v2.2.0) |
+| `X-Device-Model: <str>`             | no       | Android `Build.MODEL`. Used for targeting (added in v2.2.0)                  |
+| `X-Device-Build-Fingerprint: <str>` | no       | Android `Build.FINGERPRINT`. Used for targeting (added in v2.2.0)            |
 
-**Response 200:** body = `CertConfig` (§ 6.1).
+**Response 200:** body = `CertConfig` (§ 6.1). The `ETag` header varies
+by the **resolved** config (§ 4.1.1) — `sha256(resolved-bytes)`, hex,
+quoted — so a 304 from one device is never spuriously returned to
+another that resolves differently.
 
 **Response 304:** if client sends `If-None-Match` and ETag matches.
 
 **Response 426:** if `X-Schema-Version` is older than minimum supported.
+
+#### 4.1.1 Per-device targeting (v2.2.0+)
+
+The server resolves the cert-config it returns by matching the optional
+device headers against optional selector fields on each `CertConfig`
+row (`targetManufacturer`, `targetModel`, `targetBuildFingerprint` —
+§ 6.1). Resolution is deterministic, descending in specificity:
+
+1. **Build-fingerprint match** — active row whose
+   `targetBuildFingerprint` exact-equals `X-Device-Build-Fingerprint`.
+2. **Model match** — active row whose `targetModel` exact-equals
+   `X-Device-Model`, with `targetBuildFingerprint` null.
+3. **Manufacturer match** — active row whose `targetManufacturer`
+   exact-equals `X-Device-Manufacturer`, with the other two selectors
+   null.
+4. **Default** — active row with all three selectors null.
+
+Within a tier, ties are broken by `is_active`-most-recent (an operator
+must explicitly activate a row at a given tier). Activation is scoped
+**within a target group** — calling activate on an SEI-targeted row
+deactivates the previous SEI-targeted active, not the default.
+
+Clients on pre-v2.2.0 builds send none of the new headers and always
+resolve to tier 4 (the default). This preserves pre-v2.2.0 behavior
+under any backend.
+
+The resolution is intended to scale with **SKU count, not device
+count**. At any time there are typically O(SKUs) targeted rows plus a
+default — not O(devices). Operators who want to target a class of
+build fingerprints rather than a single OS image (per-device
+incremental ids appear in the fingerprint string) should store the
+normalized prefix (cut at the trailing `:user/release-keys` and the
+incremental build id); the contract pins exact-equals and treats the
+normalization as a client + operator convention.
 
 ### 4.2 `POST /v1/certifications`
 
@@ -275,6 +315,13 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
 - `uploadResults.enabled = false` only suppresses POSTing results — certs
   still run locally and queue. For a hard stop (app exits cleanly until a
   new config is published), use `killswitch.enabled = true` (added in v2.1.0).
+- `targetManufacturer`, `targetModel`, `targetBuildFingerprint` are optional
+  selectors (added in v2.2.0) that constrain which devices this config
+  applies to. Nulls mean "any"; an all-null row is the default. The server
+  resolves the row to return per § 4.1.1's specificity tier. Activation is
+  scoped within a target group — promoting a manufacturer-targeted row to
+  active deactivates the previous active row for the same target group, not
+  the default.
 - `wifiLink` is `null` when transport is not Wi-Fi. **It is advisory and does
   not influence `achievedTier` or `health`.** It exists so a tech (and the
   fleet dashboard) can see "the connection certified at HD today, but the
