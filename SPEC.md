@@ -299,6 +299,9 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
     "goodMin": 30,
     "topTierStretchUpFactor": 1.5,
     "topTierStretchDownFactor": 0.66
+  },
+  "dnsPolicy": {
+    "preferredServers": ["1.1.1.1", "8.8.8.8"]
   }
 }
 ```
@@ -339,6 +342,17 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
   the app falls back to bundled defaults per-field (same per-field
   tolerance as the rest of `tests.*`). See §6.1.1 for the full tunables
   reference.
+- `dnsPolicy` is **optional** (added in v2.3.0). When present, the
+  Android client compares the STB's actual `network.dnsServers` against
+  `preferredServers` at cert time and emits
+  `CertificationResult.dnsAssessment` (§ 6.2). The dashboard flags any
+  cert whose actual DNS servers contained anything outside the preferred
+  list. Matching is **strict** (every actual server must be in the
+  list) and **literal** (string equality, not CIDR / hostname / regex
+  / wildcard). An empty actual `dnsServers` list is **vacuously
+  "allPreferred=true"** — a box with no DNS configured fails upstream
+  tests; we don't flag it twice. When the field is absent, no
+  assessment is computed and nothing renders on the dashboard.
 
 #### 6.1.1 Server-tunable knobs reference
 
@@ -367,6 +381,7 @@ delegated to the Ookla binary. Every row here corresponds to a field in
 | `healthAssessment.goodMin` | int % | 1–100 | 30 | [goodMin, strongMin) → GOOD. Below → MARGINAL. |
 | `healthAssessment.topTierStretchUpFactor` | num | >1.0 | 1.5 | Cap headroom% at this × top-tier minimum so 4K HDR doesn't read 1000%. |
 | `healthAssessment.topTierStretchDownFactor` | num | 0.0–1.0 | 0.66 | Top-tier MARGINAL floor as a fraction of the tier minimum. |
+| `dnsPolicy.preferredServers` | array<string> | ≥ 1 entry, ≤ 255 chars each | – | Allow-list of literal DNS server addresses (added in v2.3.0). Drives `CertificationResult.dnsAssessment`; flagged in the dashboard's cert detail page when any actual server is outside the list. |
 
 To change phase durations, sample counts, or which servers the binary
 picks from, reconfigure the Ookla embed at speedtest.net's dashboard
@@ -378,6 +393,9 @@ picks from, reconfigure the Ookla embed at speedtest.net's dashboard
 - All numeric ranges in the live-knobs table above.
 - `wifiLinkQuality`: `excellentRssiMin > strongRssiMin > goodRssiMin`.
 - `healthAssessment`: `excellentMin > strongMin > goodMin`.
+- `dnsPolicy.preferredServers`: must be a non-empty array; each entry is
+  a non-empty string of ≤ 255 chars. The server does **not** validate
+  that entries are syntactically valid IPs.
 
 ##### Killswitch behavior
 
@@ -562,6 +580,11 @@ survives unrelated failures.
       "maxSupportedMbps": 866,
       "rateAdaptationDegraded": false,
       "advice": "−63 dBm on 5 GHz, 433/866 Mbps. Healthy link with margin."
+    },
+    "dnsAssessment": {
+      "configuredPreferred": ["1.1.1.1", "8.8.8.8"],
+      "nonPreferred":        ["192.168.10.1"],
+      "allPreferred":        false
     }
   },
 
@@ -622,6 +645,14 @@ survives unrelated failures.
   tier; useful for support triage. `null` if achievedTier is the top tier.
 - `metrics.*.samples` are raw per-sample values for debugging. Server stores
   them as JSONB; do not index. Cap array length at 200 server-side.
+- `result.dnsAssessment` (added in v2.3.0) is **absent** when the active
+  `CertConfig` had no `dnsPolicy`. Pre-v2.3.0 clients never emit it. The
+  dashboard treats its absence as "no judgment made" — NOT "all
+  preferred" — so an untargeted cert and a passing-policy cert render
+  differently. `configuredPreferred` round-trips the policy at cert
+  time, frozen; re-configuring the policy later does not retroactively
+  change the assessment on historical payloads. Matching is strict and
+  literal (see §6.1 `dnsPolicy` rules).
 
 **`capabilities` block — what each subfield means and why it matters:**
 
