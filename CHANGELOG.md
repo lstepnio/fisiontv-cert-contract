@@ -12,6 +12,20 @@ fields). **Patch** bumps clarify the spec without changing payload shape.
 
 ## [Unreleased]
 
+## [2.3.1] — 2026-05-12
+
+### Fixed (documentation only — schema + payload shape unchanged)
+
+- SPEC.md §6.2 example payload moved `dnsAssessment` out of the
+  `result` block and up to top-level on `CertificationResult`, matching
+  what `openapi.yaml` has had since v2.3.0. The schema was always
+  correct; only the prose example was inconsistent.
+
+  All three v2.3.0 implementations (backend admin validator, Android
+  cert engine + payload serializer, dashboard cert detail page) read
+  the schema and place / consume the field at top-level, so this
+  patch has zero behavior or payload-shape impact.
+
 ## [2.3.0] — 2026-05-12
 
 ### Added
