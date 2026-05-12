@@ -12,6 +12,30 @@ fields). **Patch** bumps clarify the spec without changing payload shape.
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-05-12
+
+### Added
+
+- `CertConfig.killswitch` — true killswitch. When `enabled: true`, the
+  Android client exits cleanly on receipt. Recovery is automatic on
+  next app launch (fetches active config, proceeds if killswitch flipped
+  off, exits again otherwise). No UI surface, no shared-prefs cache,
+  no in-process polling — kept deliberately minimal.
+
+  Distinct from `uploadResults.enabled=false`, which only suppresses
+  publishing; under that flag certs still run locally.
+
+  Two fields: `enabled` (required boolean) and `reason` (optional
+  string, informational only — round-tripped into logcat at exit time
+  so techs can correlate).
+
+### Changed
+
+- §6.1 prose clarifies `uploadResults.enabled` is *not* a hard stop —
+  it suppresses POSTs but certs still run.
+- §6.1.1 knobs table gains the `killswitch.*` rows and a new
+  "Killswitch behavior" subsection.
+
 ## [2.0.0] — 2026-05-12
 
 ### Removed (BREAKING)

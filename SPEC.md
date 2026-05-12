@@ -254,8 +254,9 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
   so support can correlate which config a given run used.
 - `servers[].weight` defaults to 1.0. Use it to drain a server from selection
   (set to 0) without removing it from the list (which we do want auditable).
-- `uploadResults.enabled = false` is the kill switch if the result pipeline
-  breaks; the app will skip the POST.
+- `uploadResults.enabled = false` only suppresses POSTing results — certs
+  still run locally and queue. For a hard stop (app exits cleanly until a
+  new config is published), use `killswitch.enabled = true` (added in v2.1.0).
 - `wifiLink` is `null` when transport is not Wi-Fi. **It is advisory and does
   not influence `achievedTier` or `health`.** It exists so a tech (and the
   fleet dashboard) can see "the connection certified at HD today, but the
@@ -288,8 +289,10 @@ delegated to the Ookla binary. Every row here corresponds to a field in
 | `tests.playback.manifestUrl` | string | non-empty | bbb_30fps.mpd | DASH manifest the playback probe loads. |
 | `tests.playback.durationSec` | int | 5–120 | 20 | Length of the playback probe — controls our own Media3 player. |
 | `tiers[].minDownloadMbps` etc. | per Tier schema | per tier | see §6.1 | Certification thresholds — buffered above streaming spec. |
-| `uploadResults.enabled` | bool | – | true | **Kill switch.** false ⇒ STB drops results on the floor. |
+| `uploadResults.enabled` | bool | – | true | Suppress POSTing results (certs still run locally). |
 | `uploadResults.endpoint` | url | – | – | Where to POST results. |
+| `killswitch.enabled` | bool | – | false | **True killswitch.** true ⇒ app exits cleanly on receipt; re-fetches on next launch. |
+| `killswitch.reason` | string | – | null | Optional, informational. Logged to logcat at exit time so techs can correlate. |
 | `wifiLinkQuality.excellentRssiMin` | int dBm | -100–0 | -55 | RSSI ≥ this → STRONG badge. |
 | `wifiLinkQuality.strongRssiMin` | int dBm | -100–0 | -65 | [strongRssiMin, excellentRssiMin) → STRONG. |
 | `wifiLinkQuality.goodRssiMin` | int dBm | -100–0 | -75 | [goodRssiMin, strongRssiMin) → GOOD. Below → MARGINAL/WEAK. |
@@ -310,6 +313,26 @@ picks from, reconfigure the Ookla embed at speedtest.net's dashboard
 - All numeric ranges in the live-knobs table above.
 - `wifiLinkQuality`: `excellentRssiMin > strongRssiMin > goodRssiMin`.
 - `healthAssessment`: `excellentMin > strongMin > goodMin`.
+
+##### Killswitch behavior
+
+When the active cert-config has `killswitch.enabled = true`:
+- The Android client's normal launch-time fetch resolves the config.
+- On `apply()`, the client calls `finishAffinity()` and the process
+  exits cleanly. No special screen, no in-process polling loop, no
+  shared-prefs cache.
+- The next time the app is launched (tech opens it, OS restart, etc.),
+  the same launch path fetches the active config again. If
+  `killswitch.enabled` has flipped to `false` (or the block is absent),
+  the app proceeds normally. Otherwise it exits again.
+
+Recovery is therefore tied to relaunching the app on the STB after the
+operator activates a clean cert-config. There is no background daemon
+to wake itself up. This is intentional — keeps the failure mode simple
+and the implementation footprint small.
+
+`killswitch.enabled` is distinct from `uploadResults.enabled`: the
+former is a hard stop; the latter only suppresses publishing.
 
 ##### Fallback semantics
 
