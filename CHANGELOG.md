@@ -12,6 +12,55 @@ fields). **Patch** bumps clarify the spec without changing payload shape.
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-05-12
+
+### Added
+
+- **DNS policy + assessment.** Operators can declare a list of
+  preferred nameservers per `CertConfig`; the Android client compares
+  the STB's actual `network.dnsServers` against the list at cert time
+  and emits an assessment on `CertificationResult`. The dashboard
+  flags any cert whose actual DNS servers contained anything outside
+  the preferred list.
+
+  - `CertConfig.dnsPolicy` (optional, nullable):
+
+    ```yaml
+    dnsPolicy:
+      preferredServers: ["1.1.1.1", "8.8.8.8"]
+    ```
+
+    Literal string-equality matching. No CIDR, no hostname resolution,
+    no wildcards. Operators get to use whatever string they want
+    (including IPv6 or hostnames if they have a convention); the
+    server doesn't parse or validate the entries.
+
+  - `CertificationResult.dnsAssessment` (optional, nullable):
+
+    ```yaml
+    dnsAssessment:
+      configuredPreferred: ["1.1.1.1", "8.8.8.8"]
+      nonPreferred:        ["192.168.10.1"]
+      allPreferred:        false
+    ```
+
+    Frozen at cert time. Absent when the active config had no
+    `dnsPolicy`. Pre-v2.3.0 clients never emit it; consumers must
+    treat the absence as "no judgment made", NOT as "all preferred".
+
+  - Matching is **strict** — every actual server must be in the
+    preferred list — and **vacuously true** when the actual list is
+    empty (a box with no DNS configured fails upstream tests; we
+    don't flag it twice).
+
+### Migration
+
+Schema additions are fully optional. Pre-v2.3.0 configs already in
+the DB still serve correctly (no `dnsPolicy` ⇒ no assessment ⇒
+nothing renders). Pre-v2.3.0 clients ignore the unknown `dnsPolicy`
+field they receive and continue to produce valid payloads without an
+assessment block. No coordinated rollout required.
+
 ## [2.2.0] — 2026-05-12
 
 ### Added

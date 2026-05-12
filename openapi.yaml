@@ -10,7 +10,7 @@ info:
     Both projects consume this repository as a git submodule pinned to a
     semver tag. Bumping the major version is a breaking change requiring
     coordinated client + server updates.
-  version: 2.2.0
+  version: 2.3.0
   license:
     name: Proprietary — Hotwire Communications
 servers:
@@ -380,6 +380,40 @@ components:
             should store the normalized prefix — see the
             `X-Device-Build-Fingerprint` header description for the
             normalization convention.
+        # ─── DNS policy (added in v2.3.0) ─────────────────────────────
+        # Optional. When set, the Android client compares its actual
+        # `network.dnsServers` against `preferredServers` at cert time
+        # and emits `CertificationResult.dnsAssessment`. The dashboard
+        # flags any cert that resolved against a non-preferred server.
+        # When the field is null/absent, no assessment is computed and
+        # no flag is rendered — operators that don't care about DNS
+        # posture pay no cost.
+        dnsPolicy: { $ref: '#/components/schemas/DnsPolicyConfig' }
+
+    DnsPolicyConfig:
+      type: object
+      description: |
+        Operator-declared list of nameservers the fleet is expected to
+        use. Matching is **strict** (every actual server must be in this
+        list) and **literal** (string-equality, not CIDR / hostname /
+        wildcard). Empty actual `dnsServers` is vacuously "all
+        preferred" — a box with no DNS configured fails upstream tests
+        and shouldn't be flagged twice.
+      required: [preferredServers]
+      properties:
+        preferredServers:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            maxLength: 255
+          description: |
+            Literal DNS server addresses (e.g. `"1.1.1.1"`,
+            `"2606:4700:4700::1111"`). The server does not parse or
+            validate these as IPs — operators get to use whatever
+            string they want, including hostnames if they have a
+            convention. The client compares against
+            `network.dnsServers` byte-for-byte.
 
     WifiLinkQualityConfig:
       type: object
@@ -600,6 +634,49 @@ components:
           nullable: true
         result: { $ref: '#/components/schemas/CertResult' }
         metrics: { $ref: '#/components/schemas/Metrics' }
+        # ─── DNS policy verdict (added in v2.3.0) ─────────────────────
+        # Present when the active CertConfig had a non-null `dnsPolicy`;
+        # absent otherwise. The client computes the assessment at cert
+        # time using strict, literal-string set-membership against
+        # `network.dnsServers`. Pre-v2.3.0 clients never emit this
+        # field, so the dashboard must treat its absence as "no
+        # judgment made" (NOT "all preferred").
+        dnsAssessment:
+          type: object
+          allOf: [{ $ref: '#/components/schemas/DnsAssessment' }]
+          nullable: true
+
+    DnsAssessment:
+      type: object
+      description: |
+        Client-computed verdict on whether the STB's actual DNS
+        nameservers matched the cert-config's `dnsPolicy.preferredServers`.
+        Frozen at cert time — re-configuring the policy later does not
+        retroactively change the assessment on historical payloads.
+      required: [configuredPreferred, nonPreferred, allPreferred]
+      properties:
+        configuredPreferred:
+          type: array
+          items: { type: string }
+          description: |
+            Round-trip of the cert-config's `preferredServers` at the
+            instant the cert ran. Carried in-payload so the dashboard
+            renders the verdict without having to re-resolve the
+            config — and so an audit reading historical rows can see
+            what policy was in effect when each cert was assessed.
+        nonPreferred:
+          type: array
+          items: { type: string }
+          description: |
+            Subset of `network.dnsServers` that is NOT in
+            `configuredPreferred`. Empty array when `allPreferred` is
+            true.
+        allPreferred:
+          type: boolean
+          description: |
+            True iff every entry in `network.dnsServers` is also in
+            `configuredPreferred`. Vacuously true when
+            `network.dnsServers` is empty.
 
     DeviceInfo:
       type: object
