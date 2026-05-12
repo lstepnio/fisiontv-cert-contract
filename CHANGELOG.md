@@ -12,6 +12,37 @@ fields). **Patch** bumps clarify the spec without changing payload shape.
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-05-12
+
+### Removed (BREAKING)
+
+Nine cert-config fields removed entirely from the schema. v1.4.0
+marked them `deprecated: true`; v2.0.0 drops them outright. None of
+them were ever consumed by the Ookla code path:
+
+- `CertConfig.servers[]` (the field) and the `OoklaServer` schema is
+  no longer referenced by `CertConfig`. The `OoklaServer` schema
+  itself is retained because `CertificationResult.selectedServer`
+  still uses it to describe the server Ookla *picked* per run.
+- `tests.download.{durationSec,perRequestBytes,warmupFraction}`
+- `tests.upload.{durationSec,perRequestBytes,warmupFraction}`
+- `tests.latency` section (and the `LatencyPhaseConfig` schema)
+
+Phase durations and ping counts live in the Ookla embed-config and
+must be adjusted at speedtest.net's account dashboard, not via this
+contract.
+
+### Migration
+
+- Clients (Android `RuntimeConfigParser`) silently ignore unknown
+  JSON keys, so a v2.0.0-pinned client still parses a v1.x cert-config
+  document. No client-side migration needed.
+- Backend stops validating these fields (the per-field range checks
+  are removed). Existing pre-2.0.0 configs already in the DB are
+  served unchanged.
+- Anyone tooling against the OpenAPI schema directly will need to
+  regenerate.
+
 ## [1.4.0] — 2026-05-12
 
 ### Deprecated
