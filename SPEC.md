@@ -216,20 +216,9 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
 {
   "schemaVersion": 1,
   "configVersion": "2026-05-06.1",
-  "servers": [
-    {
-      "id": "mia",
-      "name": "Miami",
-      "host": "speedtestmia.gethotwired.com",
-      "port": 8080,
-      "secure": true,
-      "weight": 1.0
-    }
-  ],
   "tests": {
-    "download":  { "durationSec": 10, "parallel": 4, "perRequestBytes": 100000000, "warmupFraction": 0.33 },
-    "upload":    { "durationSec": 5,  "parallel": 2, "perRequestBytes": 50000000,  "warmupFraction": 0.33 },
-    "latency":   { "samples": 20, "intervalMs": 100 },
+    "download":  { "parallel": 8 },
+    "upload":    { "parallel": 16 },
     "playback":  { "manifestUrl": "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd", "durationSec": 20 }
   },
   "tiers": [
@@ -288,21 +277,18 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
 #### 6.1.1 Server-tunable knobs reference
 
 This table is the single source of truth for what an operator can change
-server-side (no APK push) versus what's hard-coded in the app. Every row
-here corresponds to a field in `CertConfig`; everything not listed is in
-code.
+server-side (no APK push) versus what's hard-coded in the app or
+delegated to the Ookla binary. Every row here corresponds to a field in
+`CertConfig`; everything not listed is in code.
+
+##### Live knobs (consumed by current code path)
 
 | Path | Type | Range | Default | What it controls |
 |---|---|---|---|---|
-| `tests.download.durationSec` | int | 1–120 | 10 | Length of the download phase. Shorter = faster cert, more variance. |
-| `tests.download.parallel` | int | 1–16 | 8 | TCP streams the Ookla binary opens for download. Pinned via `--download-conn-range` to suppress auto-tune variance. |
-| `tests.download.perRequestBytes` | int64 | 1e6–2e9 | 100_000_000 | Per-stream chunk size. Mostly informational; Ookla picks its own once spawned. |
-| `tests.download.warmupFraction` | num | 0.0–0.9 | 0.33 | Fraction of phase ignored for "steady" Mbps. |
-| `tests.upload.*` | same as download | same | 5/16/50_000_000/0.33 | Upload-phase analogs. |
-| `tests.latency.samples` | int | 3–100 | 10 | Pings to median. |
-| `tests.latency.timeoutMs` | int | 100–30_000 | 2_000 | Per-ping timeout. |
+| `tests.download.parallel` | int | 1–16 | 8 | TCP streams the Ookla binary opens for download. Passed via `--download-conn-range`. |
+| `tests.upload.parallel` | int | 1–16 | 16 | Same for upload (`--upload-conn-range`). |
 | `tests.playback.manifestUrl` | string | non-empty | bbb_30fps.mpd | DASH manifest the playback probe loads. |
-| `tests.playback.durationSec` | int | 5–120 | 20 | Length of the playback probe. |
+| `tests.playback.durationSec` | int | 5–120 | 20 | Length of the playback probe — controls our own Media3 player. |
 | `tiers[].minDownloadMbps` etc. | per Tier schema | per tier | see §6.1 | Certification thresholds — buffered above streaming spec. |
 | `uploadResults.enabled` | bool | – | true | **Kill switch.** false ⇒ STB drops results on the floor. |
 | `uploadResults.endpoint` | url | – | – | Where to POST results. |
@@ -316,18 +302,46 @@ code.
 | `healthAssessment.topTierStretchUpFactor` | num | >1.0 | 1.5 | Cap headroom% at this × top-tier minimum so 4K HDR doesn't read 1000%. |
 | `healthAssessment.topTierStretchDownFactor` | num | 0.0–1.0 | 0.66 | Top-tier MARGINAL floor as a fraction of the tier minimum. |
 
-**Invariants enforced server-side (POST `/admin/cert-configs` → 400 if violated):**
-- All numeric ranges in the table above.
+##### Deprecated (still in schema, not consumed; do not set on new configs)
+
+These fields used to look tunable but are determined by the Ookla
+embed-config response, not by anything the Android client passes on the
+CLI. They are kept in the schema so configs created before v1.4.0 still
+deserialize; new configs should omit them entirely. The Android client
+ignores them silently and the backend stops validating them (POST
+succeeds either way).
+
+| Path | Why dead | Actual source of truth |
+|---|---|---|
+| `servers[]` | The Ookla binary doesn't accept a `-s` or `--server` flag from us | Embed-config's `servers[]` array |
+| `tests.download.durationSec` | No CLI flag wired | Embed-config `suite.testStage.download.testDurationSeconds` (15s) |
+| `tests.download.perRequestBytes` | No CLI flag wired | Ookla internal |
+| `tests.download.warmupFraction` | No CLI flag wired | Ookla's IQM computed internally |
+| `tests.upload.{durationSec,perRequestBytes,warmupFraction}` | Same | Embed-config + Ookla internals |
+| `tests.latency.samples` | No CLI flag wired | Embed-config `suite.testStage.latency.pingCount` (5) |
+| `tests.latency.timeoutMs` | No CLI flag wired | Ookla internal |
+
+To actually change phase durations or sample counts, reconfigure the
+Ookla embed at speedtest.net's dashboard (account holder action) — no
+code change required.
+
+##### Invariants enforced server-side
+
+`POST /admin/cert-configs` returns 400 if any of these fail:
+- All numeric ranges in the live-knobs table above.
 - `wifiLinkQuality`: `excellentRssiMin > strongRssiMin > goodRssiMin`.
 - `healthAssessment`: `excellentMin > strongMin > goodMin`.
 
-**Fallback semantics:** any optional section that's missing, malformed,
-or out-of-range falls back to bundled defaults per-field on the client.
-A single bad value can't poison the rest of the config — see the
-`uploadResults` kill-switch isolation (it parses first, in isolation,
-so it always survives unrelated failures).
+##### Fallback semantics
 
-**Things deliberately NOT tunable** (would require an APK release):
+Any optional section that's missing, malformed, or out-of-range falls
+back to bundled defaults **per-field** on the client. A single bad
+value can't poison the rest of the config — and `uploadResults`
+specifically is parsed first, in isolation, so the kill switch always
+survives unrelated failures.
+
+##### Things deliberately NOT tunable (would require an APK release)
+
 - Probe implementations (DNS, Ookla CLI, ExoPlayer playback).
 - The `Tier` enum values themselves (`sd | hd | uhd | uhd_hdr | none`).
 - Diagnostics fields collected (thermal, CPU, wifi raw).

@@ -241,13 +241,19 @@ components:
 
     CertConfig:
       type: object
-      required: [schemaVersion, configVersion, servers, tests, tiers, uploadResults]
+      required: [schemaVersion, configVersion, tests, tiers, uploadResults]
       properties:
         schemaVersion: { type: integer, minimum: 1 }
         configVersion:
           type: string
           description: Opaque; round-tripped in result POSTs for correlation
+        # DEPRECATED in v1.4.0: server selection is delegated entirely to
+        # the Ookla embed-config (returned by `ooklaConfigUrl`). The
+        # `servers[]` list here is no longer consumed by any code path
+        # and is preserved only so configs created before v1.4.0 still
+        # validate. Do not set it on new configs.
         servers:
+          deprecated: true
           type: array
           minItems: 1
           items: { $ref: '#/components/schemas/OoklaServer' }
@@ -350,8 +356,10 @@ components:
             A connection that just barely cleared 4K HDR still reads
             MARGINAL if its absolute headroom is small. Default 0.66.
 
+    # DEPRECATED in v1.4.0 (see CertConfig.servers).
     OoklaServer:
       type: object
+      deprecated: true
       required: [id, name, host, port, secure]
       properties:
         id: { type: string, example: "mia" }
@@ -364,31 +372,75 @@ components:
           default: 1.0
           description: |
             0.0 to drain the server out of selection without removing it.
+            (Vestigial: server selection is now delegated to the
+            Ookla embed-config.)
 
     TestsConfig:
       type: object
-      required: [download, upload, latency, playback]
+      required: [download, upload, playback]
+      # DEPRECATED in v1.4.0: `latency` is no longer consumed — the
+      # Ookla binary's own embed-config controls ping count and
+      # timeouts. Field is kept here so old configs in the DB still
+      # validate, but it's no longer required.
       properties:
         download: { $ref: '#/components/schemas/ThroughputPhaseConfig' }
         upload: { $ref: '#/components/schemas/ThroughputPhaseConfig' }
-        latency: { $ref: '#/components/schemas/LatencyPhaseConfig' }
+        latency:
+          deprecated: true
+          $ref: '#/components/schemas/LatencyPhaseConfig'
         playback: { $ref: '#/components/schemas/PlaybackPhaseConfig' }
 
     ThroughputPhaseConfig:
       type: object
-      required: [durationSec, parallel, perRequestBytes, warmupFraction]
+      required: [parallel]
+      # `parallel` is the only field consumed by the Android client
+      # (passed to libookla.so as `--download-conn-range` /
+      # `--upload-conn-range`). Phase duration, per-request bytes, and
+      # warmup fraction are determined by the Ookla embed-config
+      # response, NOT by these fields — see SPEC §6.1.1.
       properties:
-        durationSec: { type: integer, minimum: 1, maximum: 120 }
         parallel: { type: integer, minimum: 1, maximum: 16 }
-        perRequestBytes: { type: integer, format: int64, minimum: 1000000 }
-        warmupFraction: { type: number, minimum: 0.0, maximum: 0.9 }
+        durationSec:
+          deprecated: true
+          type: integer
+          minimum: 1
+          maximum: 120
+          description: |
+            DEPRECATED in v1.4.0. Not consumed; Ookla embed-config's
+            `suite.testStage.<phase>.testDurationSeconds` controls
+            phase length.
+        perRequestBytes:
+          deprecated: true
+          type: integer
+          format: int64
+          minimum: 1000000
+          description: DEPRECATED in v1.4.0. Not consumed; Ookla manages chunk sizing internally.
+        warmupFraction:
+          deprecated: true
+          type: number
+          minimum: 0.0
+          maximum: 0.9
+          description: DEPRECATED in v1.4.0. Not consumed; Ookla's IQM is computed internally.
 
     LatencyPhaseConfig:
       type: object
-      required: [samples, timeoutMs]
+      # DEPRECATED in v1.4.0 (see TestsConfig.latency). Schema kept so
+      # historical configs deserialize; required[] cleared so new
+      # configs may omit the section entirely.
+      required: []
       properties:
-        samples: { type: integer, minimum: 3, maximum: 100 }
-        timeoutMs: { type: integer, minimum: 100, maximum: 30000 }
+        samples:
+          deprecated: true
+          type: integer
+          minimum: 3
+          maximum: 100
+          description: DEPRECATED in v1.4.0. Not consumed; Ookla embed-config's `suite.testStage.latency.pingCount` controls ping count.
+        timeoutMs:
+          deprecated: true
+          type: integer
+          minimum: 100
+          maximum: 30000
+          description: DEPRECATED in v1.4.0. Not consumed; Ookla's per-ping timeout is internal.
 
     PlaybackPhaseConfig:
       type: object
