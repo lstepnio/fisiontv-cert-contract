@@ -580,12 +580,12 @@ survives unrelated failures.
       "maxSupportedMbps": 866,
       "rateAdaptationDegraded": false,
       "advice": "−63 dBm on 5 GHz, 433/866 Mbps. Healthy link with margin."
-    },
-    "dnsAssessment": {
-      "configuredPreferred": ["1.1.1.1", "8.8.8.8"],
-      "nonPreferred":        ["192.168.10.1"],
-      "allPreferred":        false
     }
+  },
+  "dnsAssessment": {
+    "configuredPreferred": ["1.1.1.1", "8.8.8.8"],
+    "nonPreferred":        ["192.168.10.1"],
+    "allPreferred":        false
   },
 
   "metrics": {
