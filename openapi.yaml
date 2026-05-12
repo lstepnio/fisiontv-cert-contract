@@ -262,6 +262,89 @@ components:
           properties:
             enabled: { type: boolean }
             endpoint: { type: string, nullable: true }
+        # ─── Optional tunables (added in v1.3.0) ──────────────────────
+        # Both sections are optional; when missing the client falls
+        # back to its bundled defaults per-field. See SPEC.md §6.1 for
+        # the operational effect of each knob.
+        wifiLinkQuality: { $ref: '#/components/schemas/WifiLinkQualityConfig' }
+        healthAssessment: { $ref: '#/components/schemas/HealthAssessmentConfig' }
+
+    WifiLinkQualityConfig:
+      type: object
+      description: |
+        RSSI bands and rate-adaptation cutoff that produce the
+        STRONG / GOOD / MARGINAL / WEAK badge on each cert.
+        Ordering invariant (enforced client-side): excellent > strong > good.
+      required: [excellentRssiMin, strongRssiMin, goodRssiMin, rateAdaptationDegradedThreshold]
+      properties:
+        excellentRssiMin:
+          type: integer
+          minimum: -100
+          maximum: 0
+          description: RSSI ≥ this (dBm) → STRONG. Default -55.
+        strongRssiMin:
+          type: integer
+          minimum: -100
+          maximum: 0
+          description: RSSI in [strongRssiMin, excellentRssiMin) → STRONG. Default -65.
+        goodRssiMin:
+          type: integer
+          minimum: -100
+          maximum: 0
+          description: RSSI in [goodRssiMin, strongRssiMin) → GOOD. Below → MARGINAL/WEAK. Default -75.
+        rateAdaptationDegradedThreshold:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          description: |
+            If actual link rate / max supported rate < this, flag the link
+            as degraded regardless of RSSI. Default 0.5.
+
+    HealthAssessmentConfig:
+      type: object
+      description: |
+        Headroom buckets and top-tier stretch factors that produce the
+        EXCELLENT / STRONG / GOOD / MARGINAL `health.rating` field on
+        each cert result. Ordering invariant (enforced client-side):
+        excellent > strong > good, all in (0, 100].
+      required:
+        - excellentMin
+        - strongMin
+        - goodMin
+        - topTierStretchUpFactor
+        - topTierStretchDownFactor
+      properties:
+        excellentMin:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: headroom% ≥ this → EXCELLENT. Default 80.
+        strongMin:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: headroom% in [strongMin, excellentMin) → STRONG. Default 55.
+        goodMin:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: headroom% in [goodMin, strongMin) → GOOD. Below → MARGINAL. Default 30.
+        topTierStretchUpFactor:
+          type: number
+          exclusiveMinimum: 1.0
+          description: |
+            At the top tier (uhd_hdr) the achieved download is capped at
+            this × the tier minimum before headroom% is computed — so
+            limitless connections don't inflate to 1000% headroom.
+            Default 1.5.
+        topTierStretchDownFactor:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          description: |
+            Top-tier MARGINAL floor as a fraction of the tier minimum.
+            A connection that just barely cleared 4K HDR still reads
+            MARGINAL if its absolute headroom is small. Default 0.66.
 
     OoklaServer:
       type: object
