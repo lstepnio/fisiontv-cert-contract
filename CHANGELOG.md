@@ -12,6 +12,39 @@ fields). **Patch** bumps clarify the spec without changing payload shape.
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-05-12
+
+### Deprecated
+
+Nine cert-config fields are now marked `deprecated: true` and no
+longer in `required:` lists. They remain in the schema so configs
+created before v1.4.0 still deserialize, but new configs should omit
+them entirely. The Android client and backend ignore them.
+
+- `servers[]` (and the `OoklaServer` schema) — server selection is
+  delegated to the Ookla embed-config response; the cert-config list
+  was never passed to the binary.
+- `tests.download.durationSec`, `tests.download.perRequestBytes`,
+  `tests.download.warmupFraction` — phase length, chunk sizing, and
+  IQM warmup are all determined by the Ookla embed-config response
+  (`suite.testStage.download.testDurationSeconds` etc.) or by the
+  binary's internal logic.
+- `tests.upload.{durationSec,perRequestBytes,warmupFraction}` — same.
+- `tests.latency` (the whole section, including `samples` and
+  `timeoutMs`) — embed-config's `suite.testStage.latency.pingCount`
+  controls ping count; per-ping timeout is internal to the binary.
+
+To actually change phase durations or sample counts, reconfigure the
+Ookla embed at speedtest.net's dashboard (account holder action) — no
+code change required.
+
+### Changed
+
+- SPEC §6.1.1 split into "Live knobs" and "Deprecated" tables so an
+  operator can see at a glance what's actually consumed.
+- SPEC §6.1 example and `fixtures/cert-config.example.json` no longer
+  include the dead fields.
+
 ## [1.3.0] — 2026-05-12
 
 ### Added
