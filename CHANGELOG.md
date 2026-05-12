@@ -12,6 +12,42 @@ fields). **Patch** bumps clarify the spec without changing payload shape.
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-05-12
+
+### Added
+
+- **Per-device cert-config targeting.** Operators can now ship
+  different configs to different STB hardware without app changes.
+  Three optional selector fields land on `CertConfig`:
+  - `targetManufacturer` (Android `Build.MANUFACTURER`)
+  - `targetModel` (Android `Build.MODEL`)
+  - `targetBuildFingerprint` (Android `Build.FINGERPRINT`)
+
+  Each nullable; an all-null row is the default.
+
+- **Three new optional request headers on `GET /v1/cert-config`:**
+  `X-Device-Manufacturer`, `X-Device-Model`, `X-Device-Build-Fingerprint`.
+  Pre-v2.2.0 clients send none of these and resolve to the default,
+  preserving existing behavior under a v2.2.0 server.
+
+- **Resolution algorithm** (§ 4.1.1): the server picks the row whose
+  selectors most-specifically match the request — build-fingerprint
+  match wins over model, model wins over manufacturer, manufacturer
+  wins over default. Deterministic; no priority list.
+
+- **Per-resolved-config `ETag`.** The `ETag` returned now varies by
+  the resolved config (`sha256(resolved-bytes)`), not by a global
+  active-row identifier. This keeps the 304 fast-path correct when
+  different devices resolve to different rows.
+
+### Migration
+
+Schema additions are fully optional. Pre-2.2.0 configs already in the
+DB act as the default. Pre-2.2.0 clients send no targeting headers
+and continue to receive the default config. No coordinated rollout
+required; backend, client, and admin tooling can be bumped
+independently.
+
 ## [2.1.1] — 2026-05-12
 
 ### Changed (clarification only — schema + payload shape unchanged)

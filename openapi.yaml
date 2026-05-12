@@ -10,7 +10,7 @@ info:
     Both projects consume this repository as a git submodule pinned to a
     semver tag. Bumping the major version is a breaking change requiring
     coordinated client + server updates.
-  version: 2.1.1
+  version: 2.2.0
   license:
     name: Proprietary — Hotwire Communications
 servers:
@@ -32,10 +32,31 @@ paths:
         the response with a 1-hour TTL and falls back to bundled defaults
         on 5xx or if the returned schemaVersion exceeds what the app knows
         how to consume.
+
+        **Per-device targeting (v2.2.0+).** The server picks the cert-config
+        that best matches the requesting device using the optional
+        `X-Device-Manufacturer`, `X-Device-Model`, and `X-Device-Build-Fingerprint`
+        headers. Resolution is deterministic, descending in specificity:
+
+        1. Active row whose `targetBuildFingerprint` exact-matches the
+           request header.
+        2. Active row whose `targetModel` matches (with `targetBuildFingerprint`
+           null).
+        3. Active row whose `targetManufacturer` matches (with the other
+           two null).
+        4. Active row with all three selectors null (the **default**).
+
+        Clients on pre-v2.2.0 builds (no headers) always resolve to the
+        default. The `ETag` returned varies by the **resolved** config
+        (`sha256(resolved-bytes)`), so a 304 from one device is not
+        spuriously returned to another that resolves differently.
       parameters:
         - $ref: '#/components/parameters/DeviceId'
         - $ref: '#/components/parameters/AppVersion'
         - $ref: '#/components/parameters/SchemaVersion'
+        - $ref: '#/components/parameters/DeviceManufacturer'
+        - $ref: '#/components/parameters/DeviceModel'
+        - $ref: '#/components/parameters/DeviceBuildFingerprint'
         - in: header
           name: If-None-Match
           required: false
@@ -224,6 +245,42 @@ components:
       required: true
       schema: { type: integer, minimum: 1 }
       description: Highest schema version the client understands
+    DeviceManufacturer:
+      in: header
+      name: X-Device-Manufacturer
+      required: false
+      schema: { type: string, maxLength: 255, example: "SEI Robotics" }
+      description: |
+        Value of Android `Build.MANUFACTURER`. Used by the server to
+        resolve a per-device cert-config when the operator has created
+        a manufacturer-targeted row. Empty / absent = no manufacturer
+        selector (resolves to the all-null default unless a more
+        specific match exists). Added in v2.2.0; pre-v2.2.0 clients
+        send no header and resolve to the default.
+    DeviceModel:
+      in: header
+      name: X-Device-Model
+      required: false
+      schema: { type: string, maxLength: 255, example: "FRC1-Hotwire" }
+      description: |
+        Value of Android `Build.MODEL`. See [DeviceManufacturer] for the
+        resolution semantics. Added in v2.2.0.
+    DeviceBuildFingerprint:
+      in: header
+      name: X-Device-Build-Fingerprint
+      required: false
+      schema:
+        type: string
+        maxLength: 255
+        example: "EVOFORCE1/SEI800HW/SEI800HW:12/STTC.220803.001/1876:user/release-keys"
+      description: |
+        Value of Android `Build.FINGERPRINT`. Exact-equals match against
+        the server-side selector — operators who want to target a class
+        of builds rather than a single OS image should store the
+        normalized prefix (cut at the trailing `:user/release-keys` and
+        the incremental build id) and the client / operator agree on the
+        normalization. The contract itself just pins exact-equals.
+        Added in v2.2.0.
 
   responses:
     BadRequest:
@@ -289,6 +346,40 @@ components:
         # Distinct from `uploadResults.enabled=false`, which only
         # suppresses publishing — certs still run locally.
         killswitch: { $ref: '#/components/schemas/Killswitch' }
+        # ─── Device targeting (added in v2.2.0) ───────────────────────
+        # Optional selectors that constrain which devices this row
+        # applies to. The server picks the most-specific match per the
+        # algorithm documented on `GET /v1/cert-config`. Nulls mean
+        # "any"; an all-null row is the default that catches devices no
+        # more-specific row matches. Operators should keep one row per
+        # (selector-tuple, is_active=true) — the activate endpoint
+        # deactivates other rows in the same target group, not
+        # globally.
+        targetManufacturer:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: |
+            Exact-match selector against `X-Device-Manufacturer`. Null =
+            no manufacturer constraint.
+        targetModel:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: |
+            Exact-match selector against `X-Device-Model`. Null = no
+            model constraint.
+        targetBuildFingerprint:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: |
+            Exact-match selector against `X-Device-Build-Fingerprint`.
+            Null = no build-fingerprint constraint. Operators who want
+            to target a class of builds rather than a single OS image
+            should store the normalized prefix — see the
+            `X-Device-Build-Fingerprint` header description for the
+            normalization convention.
 
     WifiLinkQualityConfig:
       type: object
