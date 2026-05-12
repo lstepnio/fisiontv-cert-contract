@@ -281,8 +281,6 @@ server-side (no APK push) versus what's hard-coded in the app or
 delegated to the Ookla binary. Every row here corresponds to a field in
 `CertConfig`; everything not listed is in code.
 
-##### Live knobs (consumed by current code path)
-
 | Path | Type | Range | Default | What it controls |
 |---|---|---|---|---|
 | `tests.download.parallel` | int | 1–16 | 8 | TCP streams the Ookla binary opens for download. Passed via `--download-conn-range`. |
@@ -302,28 +300,9 @@ delegated to the Ookla binary. Every row here corresponds to a field in
 | `healthAssessment.topTierStretchUpFactor` | num | >1.0 | 1.5 | Cap headroom% at this × top-tier minimum so 4K HDR doesn't read 1000%. |
 | `healthAssessment.topTierStretchDownFactor` | num | 0.0–1.0 | 0.66 | Top-tier MARGINAL floor as a fraction of the tier minimum. |
 
-##### Deprecated (still in schema, not consumed; do not set on new configs)
-
-These fields used to look tunable but are determined by the Ookla
-embed-config response, not by anything the Android client passes on the
-CLI. They are kept in the schema so configs created before v1.4.0 still
-deserialize; new configs should omit them entirely. The Android client
-ignores them silently and the backend stops validating them (POST
-succeeds either way).
-
-| Path | Why dead | Actual source of truth |
-|---|---|---|
-| `servers[]` | The Ookla binary doesn't accept a `-s` or `--server` flag from us | Embed-config's `servers[]` array |
-| `tests.download.durationSec` | No CLI flag wired | Embed-config `suite.testStage.download.testDurationSeconds` (15s) |
-| `tests.download.perRequestBytes` | No CLI flag wired | Ookla internal |
-| `tests.download.warmupFraction` | No CLI flag wired | Ookla's IQM computed internally |
-| `tests.upload.{durationSec,perRequestBytes,warmupFraction}` | Same | Embed-config + Ookla internals |
-| `tests.latency.samples` | No CLI flag wired | Embed-config `suite.testStage.latency.pingCount` (5) |
-| `tests.latency.timeoutMs` | No CLI flag wired | Ookla internal |
-
-To actually change phase durations or sample counts, reconfigure the
-Ookla embed at speedtest.net's dashboard (account holder action) — no
-code change required.
+To change phase durations, sample counts, or which servers the binary
+picks from, reconfigure the Ookla embed at speedtest.net's dashboard
+(account holder action) — those are not surfaced in `CertConfig`.
 
 ##### Invariants enforced server-side
 
