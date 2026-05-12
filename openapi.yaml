@@ -10,7 +10,7 @@ info:
     Both projects consume this repository as a git submodule pinned to a
     semver tag. Bumping the major version is a breaking change requiring
     coordinated client + server updates.
-  version: 2.0.0
+  version: 2.1.0
   license:
     name: Proprietary — Hotwire Communications
 servers:
@@ -264,6 +264,14 @@ components:
         # the operational effect of each knob.
         wifiLinkQuality: { $ref: '#/components/schemas/WifiLinkQualityConfig' }
         healthAssessment: { $ref: '#/components/schemas/HealthAssessmentConfig' }
+        # ─── True killswitch (added in v2.1.0) ────────────────────────
+        # When enabled, the Android client exits cleanly on receipt of
+        # this config. Recovery is automatic on next app launch — the
+        # launch path re-fetches the config and proceeds normally if
+        # `enabled` has flipped back to false (or the block is absent).
+        # Distinct from `uploadResults.enabled=false`, which only
+        # suppresses publishing — certs still run locally.
+        killswitch: { $ref: '#/components/schemas/Killswitch' }
 
     WifiLinkQualityConfig:
       type: object
@@ -345,6 +353,27 @@ components:
             Top-tier MARGINAL floor as a fraction of the tier minimum.
             A connection that just barely cleared 4K HDR still reads
             MARGINAL if its absolute headroom is small. Default 0.66.
+
+    Killswitch:
+      type: object
+      description: |
+        True killswitch. When `enabled: true`, the Android client exits
+        cleanly on receipt of this config — no UI, no further work, no
+        special screen. Recovery is automatic on next app launch: the
+        normal launch fetch picks up whatever the active cert-config
+        currently says and proceeds (or exits again if killswitch is
+        still on).
+
+        Distinct from `uploadResults.enabled=false`, which only suppresses
+        publishing — under that flag certs still run locally.
+
+        `reason` is optional and informational (round-tripped into the
+        Android logcat at exit time so techs can correlate). Not shown
+        to the user.
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+        reason: { type: string, nullable: true }
 
     # OoklaServer describes the server Ookla SELECTED for a given run;
     # it appears in CertificationResult, not in CertConfig (server
