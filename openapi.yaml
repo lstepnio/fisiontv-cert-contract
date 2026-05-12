@@ -331,7 +331,11 @@ components:
           description: headroom% in [goodMin, strongMin) → GOOD. Below → MARGINAL. Default 30.
         topTierStretchUpFactor:
           type: number
-          exclusiveMinimum: 1.0
+          # OpenAPI 3.0: exclusiveMinimum is the boolean toggle paired
+          # with minimum. (3.1 lets you use a numeric exclusiveMinimum
+          # directly; we stay on 3.0.3 to match the rest of the spec.)
+          minimum: 1.0
+          exclusiveMinimum: true
           description: |
             At the top tier (uhd_hdr) the achieved download is capped at
             this × the tier minimum before headroom% is computed — so
