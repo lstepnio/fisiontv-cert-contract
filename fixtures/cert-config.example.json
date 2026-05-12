@@ -25,5 +25,18 @@
     { "id": "uhd",     "displayName": "4K",      "minDownloadMbps": 40, "minUploadMbps": 5, "maxLatencyMs": 80,  "maxJitterMs": 20, "minPlaybackHeight": 2160, "minPlaybackBitrateKbps": 16000 },
     { "id": "uhd_hdr", "displayName": "4K HDR",  "minDownloadMbps": 55, "minUploadMbps": 5, "maxLatencyMs": 50,  "maxJitterMs": 15, "minPlaybackHeight": 2160, "minPlaybackBitrateKbps": 25000, "requiresHdr": true }
   ],
-  "uploadResults": { "enabled": false, "endpoint": null }
+  "uploadResults": { "enabled": false, "endpoint": null },
+  "wifiLinkQuality": {
+    "excellentRssiMin": -55,
+    "strongRssiMin": -65,
+    "goodRssiMin": -75,
+    "rateAdaptationDegradedThreshold": 0.5
+  },
+  "healthAssessment": {
+    "excellentMin": 80,
+    "strongMin": 55,
+    "goodMin": 30,
+    "topTierStretchUpFactor": 1.5,
+    "topTierStretchDownFactor": 0.66
+  }
 }

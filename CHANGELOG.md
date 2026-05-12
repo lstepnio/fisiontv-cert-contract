@@ -12,6 +12,42 @@ fields). **Patch** bumps clarify the spec without changing payload shape.
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-05-12
+
+### Added
+
+- `CertConfig.wifiLinkQuality` (optional) — operator-tunable RSSI bands +
+  rate-adaptation cutoff that produce the STRONG / GOOD / MARGINAL / WEAK
+  WiFi badge. Four fields: `excellentRssiMin`, `strongRssiMin`,
+  `goodRssiMin`, `rateAdaptationDegradedThreshold`.
+- `CertConfig.healthAssessment` (optional) — operator-tunable headroom
+  buckets + top-tier stretch factors that produce the
+  EXCELLENT / STRONG / GOOD / MARGINAL `health.rating` field. Five
+  fields: `excellentMin`, `strongMin`, `goodMin`,
+  `topTierStretchUpFactor`, `topTierStretchDownFactor`.
+- SPEC §6.1.1 "Server-tunable knobs reference" — a single table listing
+  every cert-config field with type, range, default, and operational
+  effect. Distinguishes server-tunable from in-code (e.g. probe
+  implementations, the Tier enum). Includes the invariants the backend
+  enforces (`excellentRssiMin > strongRssiMin > goodRssiMin`, etc.).
+
+### Notes
+
+- Both new sections are **additive and optional**. Clients on the
+  bundled defaults keep working unchanged. Per-field parser tolerance:
+  a missing or out-of-range value falls back to the bundled default
+  rather than rejecting the whole config.
+- No schemaVersion bump (still 1) — the change is fully backward-compat.
+
+## [1.2.1] — 2026-05-12
+
+### Fixed
+
+- Internal OpenAPI consistency: declared `openapi: 3.0.3` (the document
+  was using 3.0-only `nullable: true`), rewrote 4 `oneOf:[$ref, null]`
+  blocks to `allOf + nullable`, added explicit `type: object` for the
+  nullable-type-sibling lint rule.
+
 ## [1.2.0] — 2026-05-11
 
 ### Added

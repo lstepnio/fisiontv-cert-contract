@@ -238,7 +238,21 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
     { "id": "uhd",     "displayName": "4K",      "minDownloadMbps": 40, "minUploadMbps": 5, "maxLatencyMs": 80,  "maxJitterMs": 20, "minPlaybackHeight": 2160, "minPlaybackBitrateKbps": 16000 },
     { "id": "uhd_hdr", "displayName": "4K HDR",  "minDownloadMbps": 55, "minUploadMbps": 5, "maxLatencyMs": 50,  "maxJitterMs": 15, "minPlaybackHeight": 2160, "minPlaybackBitrateKbps": 25000, "requiresHdr": true }
   ],
-  "uploadResults": { "enabled": true, "endpoint": "/v1/certifications" }
+  "uploadResults": { "enabled": true, "endpoint": "/v1/certifications" },
+
+  "wifiLinkQuality": {
+    "excellentRssiMin": -55,
+    "strongRssiMin": -65,
+    "goodRssiMin": -75,
+    "rateAdaptationDegradedThreshold": 0.5
+  },
+  "healthAssessment": {
+    "excellentMin": 80,
+    "strongMin": 55,
+    "goodMin": 30,
+    "topTierStretchUpFactor": 1.5,
+    "topTierStretchDownFactor": 0.66
+  }
 }
 ```
 
@@ -266,6 +280,60 @@ All timestamps are RFC 3339 UTC strings. All durations are explicit
   that just clears the codec spec but not these thresholds is *not* certified
   for that tier — the headroom keeps the customer working when a second
   device joins, evening peak hits, or the Wi-Fi link degrades after install.
+- `wifiLinkQuality` and `healthAssessment` are **optional**; when missing,
+  the app falls back to bundled defaults per-field (same per-field
+  tolerance as the rest of `tests.*`). See §6.1.1 for the full tunables
+  reference.
+
+#### 6.1.1 Server-tunable knobs reference
+
+This table is the single source of truth for what an operator can change
+server-side (no APK push) versus what's hard-coded in the app. Every row
+here corresponds to a field in `CertConfig`; everything not listed is in
+code.
+
+| Path | Type | Range | Default | What it controls |
+|---|---|---|---|---|
+| `tests.download.durationSec` | int | 1–120 | 10 | Length of the download phase. Shorter = faster cert, more variance. |
+| `tests.download.parallel` | int | 1–16 | 8 | TCP streams the Ookla binary opens for download. Pinned via `--download-conn-range` to suppress auto-tune variance. |
+| `tests.download.perRequestBytes` | int64 | 1e6–2e9 | 100_000_000 | Per-stream chunk size. Mostly informational; Ookla picks its own once spawned. |
+| `tests.download.warmupFraction` | num | 0.0–0.9 | 0.33 | Fraction of phase ignored for "steady" Mbps. |
+| `tests.upload.*` | same as download | same | 5/16/50_000_000/0.33 | Upload-phase analogs. |
+| `tests.latency.samples` | int | 3–100 | 10 | Pings to median. |
+| `tests.latency.timeoutMs` | int | 100–30_000 | 2_000 | Per-ping timeout. |
+| `tests.playback.manifestUrl` | string | non-empty | bbb_30fps.mpd | DASH manifest the playback probe loads. |
+| `tests.playback.durationSec` | int | 5–120 | 20 | Length of the playback probe. |
+| `tiers[].minDownloadMbps` etc. | per Tier schema | per tier | see §6.1 | Certification thresholds — buffered above streaming spec. |
+| `uploadResults.enabled` | bool | – | true | **Kill switch.** false ⇒ STB drops results on the floor. |
+| `uploadResults.endpoint` | url | – | – | Where to POST results. |
+| `wifiLinkQuality.excellentRssiMin` | int dBm | -100–0 | -55 | RSSI ≥ this → STRONG badge. |
+| `wifiLinkQuality.strongRssiMin` | int dBm | -100–0 | -65 | [strongRssiMin, excellentRssiMin) → STRONG. |
+| `wifiLinkQuality.goodRssiMin` | int dBm | -100–0 | -75 | [goodRssiMin, strongRssiMin) → GOOD. Below → MARGINAL/WEAK. |
+| `wifiLinkQuality.rateAdaptationDegradedThreshold` | num | 0.0–1.0 | 0.5 | linkRate/maxSupported below this ⇒ link flagged as degraded regardless of RSSI. |
+| `healthAssessment.excellentMin` | int % | 1–100 | 80 | headroom% ≥ this → `health.rating=EXCELLENT`. |
+| `healthAssessment.strongMin` | int % | 1–100 | 55 | [strongMin, excellentMin) → STRONG. |
+| `healthAssessment.goodMin` | int % | 1–100 | 30 | [goodMin, strongMin) → GOOD. Below → MARGINAL. |
+| `healthAssessment.topTierStretchUpFactor` | num | >1.0 | 1.5 | Cap headroom% at this × top-tier minimum so 4K HDR doesn't read 1000%. |
+| `healthAssessment.topTierStretchDownFactor` | num | 0.0–1.0 | 0.66 | Top-tier MARGINAL floor as a fraction of the tier minimum. |
+
+**Invariants enforced server-side (POST `/admin/cert-configs` → 400 if violated):**
+- All numeric ranges in the table above.
+- `wifiLinkQuality`: `excellentRssiMin > strongRssiMin > goodRssiMin`.
+- `healthAssessment`: `excellentMin > strongMin > goodMin`.
+
+**Fallback semantics:** any optional section that's missing, malformed,
+or out-of-range falls back to bundled defaults per-field on the client.
+A single bad value can't poison the rest of the config — see the
+`uploadResults` kill-switch isolation (it parses first, in isolation,
+so it always survives unrelated failures).
+
+**Things deliberately NOT tunable** (would require an APK release):
+- Probe implementations (DNS, Ookla CLI, ExoPlayer playback).
+- The `Tier` enum values themselves (`sd | hd | uhd | uhd_hdr | none`).
+- Diagnostics fields collected (thermal, CPU, wifi raw).
+- `dnsProbeHosts` list (technically optional in the wire format but
+  parsing-tolerant; treat as in-code for operational purposes).
+- The cert-config schema itself (bumping fields ⇒ contract bump).
 
 ### 6.2 `CertificationResult` (body of `POST /v1/certifications`)
 
