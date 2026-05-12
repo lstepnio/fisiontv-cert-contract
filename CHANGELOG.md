@@ -12,6 +12,38 @@ fields). **Patch** bumps clarify the spec without changing payload shape.
 
 ## [Unreleased]
 
+## [2.1.1] — 2026-05-12
+
+### Changed (clarification only — schema + payload shape unchanged)
+
+- SPEC §4.4 + openapi.yaml `getAppVersion` description now describe the
+  client's actual behavior since v0.8.7: auto-update runs in the
+  background, **never blocks the cert**. The previous three-state
+  "Run/Update banner/Update & run" gating model was replaced by a
+  client-side decision (see `MainViewModel.preCertUpdate`) and the
+  spec had drifted from reality.
+
+- `minRequiredVersionCode` description reframed from "cert-blocking
+  floor" to **advisory floor** — the version the server would prefer
+  results to come from. The client never gates the cert on this; the
+  server is the right place to flag/dim/discard results below the
+  floor.
+
+- `releaseNotes` description marked as reserved/future-use. The
+  current client auto-updates silently and surfaces nothing in any
+  UI. Field is still accepted; consumers should not rely on it being
+  rendered.
+
+- `Response 426` paragraph: the client logs the response and still
+  runs the cert; 426 is a signal to escalate auto-update urgency, not
+  a cert-blocking gate.
+
+### Migration
+
+No payload-shape change. Backend implementations and clients pinned
+to v2.1.0 continue to interop unchanged with v2.1.1 clients/servers.
+This is a documentation-accuracy patch.
+
 ## [2.1.0] — 2026-05-12
 
 ### Added
